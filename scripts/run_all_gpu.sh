@@ -29,6 +29,15 @@ Grid options:
   --repetition-values "R ..."   Explicit repetition indices.
 
 DNN and intensity options:
+  --dnn-architecture MODE      theory/adaptive/auto or fixed/manual.
+  --hidden-layers "W ..."      Hidden widths for fixed/manual architecture.
+  --depth-scale C              Multiplier for theory depth ceil(C log n).
+  --width-scale C              Multiplier for theory width C n^((1-gamma)/2).
+  --min-depth K                Minimum theory depth.
+  --max-depth K                Maximum theory depth.
+  --min-width K                Minimum theory width.
+  --max-width K                Maximum theory width.
+  --width-multiple K           Round theory width up to this multiple.
   --epochs E                   Number of DNN epochs.
   --output-activations "A B"    softplus, relu, or both.
   --device DEVICE              cuda, cpu, or auto.
@@ -73,6 +82,15 @@ REPETITIONS="${REPETITIONS:-0 1 2}"
 SCENARIOS="${SCENARIOS:-compositional near_zero manifold}"
 SUPPORTS="${SUPPORTS:-euclidean1d euclidean2d circle sphere}"
 OUTPUT_ACTIVATIONS="${OUTPUT_ACTIVATIONS:-softplus relu}"
+DNN_ARCHITECTURE="${DNN_ARCHITECTURE:-theory}"
+HIDDEN_LAYERS="${HIDDEN_LAYERS:-}"
+DEPTH_SCALE="${DEPTH_SCALE:-1.0}"
+WIDTH_SCALE="${WIDTH_SCALE:-8.0}"
+MIN_DEPTH="${MIN_DEPTH:-2}"
+MAX_DEPTH="${MAX_DEPTH:-12}"
+MIN_WIDTH="${MIN_WIDTH:-32}"
+MAX_WIDTH="${MAX_WIDTH:-512}"
+WIDTH_MULTIPLE="${WIDTH_MULTIPLE:-8}"
 EPOCHS="${EPOCHS:-150}"
 DEVICE="${DEVICE:-cuda}"
 EXPECTED_COUNT="${EXPECTED_COUNT:-30}"
@@ -94,6 +112,15 @@ while [[ $# -gt 0 ]]; do
     --n-values) N_VALUES="$2"; shift 2 ;;
     --repetitions) REPETITIONS="$(repetition_values "$2")"; shift 2 ;;
     --repetition-values|--reps) REPETITIONS="$2"; shift 2 ;;
+    --dnn-architecture) DNN_ARCHITECTURE="$2"; shift 2 ;;
+    --hidden-layers) HIDDEN_LAYERS="$2"; shift 2 ;;
+    --depth-scale) DEPTH_SCALE="$2"; shift 2 ;;
+    --width-scale) WIDTH_SCALE="$2"; shift 2 ;;
+    --min-depth) MIN_DEPTH="$2"; shift 2 ;;
+    --max-depth) MAX_DEPTH="$2"; shift 2 ;;
+    --min-width) MIN_WIDTH="$2"; shift 2 ;;
+    --max-width) MAX_WIDTH="$2"; shift 2 ;;
+    --width-multiple) WIDTH_MULTIPLE="$2"; shift 2 ;;
     --epochs) EPOCHS="$2"; shift 2 ;;
     --output-activations|--activations) OUTPUT_ACTIVATIONS="$2"; shift 2 ;;
     --device) DEVICE="$2"; shift 2 ;;
@@ -116,6 +143,19 @@ run_case() {
   local rep="$5"
   local activation="$6"
   local -a manifold_args=()
+  local dnn_args=(
+    --dnn-architecture "$DNN_ARCHITECTURE"
+    --depth-scale "$DEPTH_SCALE"
+    --width-scale "$WIDTH_SCALE"
+    --min-depth "$MIN_DEPTH"
+    --max-depth "$MAX_DEPTH"
+    --min-width "$MIN_WIDTH"
+    --max-width "$MAX_WIDTH"
+    --width-multiple "$WIDTH_MULTIPLE"
+  )
+  if [[ -n "$HIDDEN_LAYERS" ]]; then
+    dnn_args+=(--hidden-layers "$HIDDEN_LAYERS")
+  fi
   local intensity_args=(--expected-count "$EXPECTED_COUNT")
   if [[ -n "$EPSILON" ]]; then
     intensity_args+=(--epsilon "$EPSILON")
@@ -143,6 +183,7 @@ run_case() {
       --repetition "$rep" \
       --device "$DEVICE" \
       --max-epochs "$EPOCHS" \
+      "${dnn_args[@]}" \
       "${intensity_args[@]}" \
       "${manifold_args[@]}"
   else
@@ -156,6 +197,7 @@ run_case() {
       --repetition "$rep" \
       --device "$DEVICE" \
       --max-epochs "$EPOCHS" \
+      "${dnn_args[@]}" \
       "${intensity_args[@]}"
   fi
 }

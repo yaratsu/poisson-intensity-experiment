@@ -13,6 +13,8 @@ set -euo pipefail
 #   --repetition 0 \
 #   --expected-count 30 \
 #   --device cuda
+# DNN architecture follows theory scaling by default. To use a fixed architecture:
+#   --dnn-architecture fixed --hidden-layers "128 128 128"
 # Manifold oracle ablation example:
 # bash scripts/run_experiment.sh \
 #   --scenario manifold --support circle --z-dim 1 --n 1000 \

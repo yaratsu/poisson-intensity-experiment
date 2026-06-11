@@ -36,15 +36,36 @@ def build_estimator(method: str, config: dict[str, Any]) -> Any:
 def method_label(
     method: str,
     output_activation: str | None = None,
+    architecture: str | None = None,
     manifold_learning: str | None = None,
 ) -> str:
     method = method.lower()
     if method in {"dnn", "dnn_npmle"}:
         label = f"dnn_npmle_{output_activation or 'softplus'}"
+        if architecture:
+            label = f"{label}_{architecture}"
         if manifold_learning:
             label = f"{label}_{manifold_learning}"
         return label
     return method
+
+
+def _tag_number(value: Any) -> str:
+    text = f"{float(value):g}"
+    return text.replace("-", "m").replace(".", "p")
+
+
+def dnn_architecture_label(config: dict[str, Any]) -> str:
+    architecture = str(config.get("architecture", "theory")).lower()
+    if architecture in {"theory", "adaptive", "auto"}:
+        return (
+            f"{architecture}"
+            f"_ds{_tag_number(config.get('depth_scale', 1.0))}"
+            f"_ws{_tag_number(config.get('width_scale', 8.0))}"
+        )
+    widths = config.get("hidden_layers") or []
+    width_tag = "x".join(str(int(width)) for width in widths) if widths else "custom"
+    return f"{architecture}_{width_tag}"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -56,6 +77,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--n", type=int, default=None)
     parser.add_argument("--method", default=None)
     parser.add_argument("--output-activation", choices=["softplus", "relu"], default=None)
+    parser.add_argument("--dnn-architecture", choices=["theory", "adaptive", "auto", "fixed", "manual"], default=None)
+    parser.add_argument("--hidden-layers", default=None, help="Comma- or space-separated hidden widths for fixed/manual DNN architecture.")
+    parser.add_argument("--depth-scale", type=float, default=None)
+    parser.add_argument("--width-scale", type=float, default=None)
+    parser.add_argument("--min-depth", type=int, default=None)
+    parser.add_argument("--max-depth", type=int, default=None)
+    parser.add_argument("--min-width", type=int, default=None)
+    parser.add_argument("--max-width", type=int, default=None)
+    parser.add_argument("--width-multiple", type=int, default=None)
+    parser.add_argument("--architecture-rate-exponent", type=float, default=None)
     parser.add_argument("--manifold-learning", choices=["agnostic", "oracle"], default=None)
     parser.add_argument("--manifold-input", choices=["intrinsic", "embedded"], default=None)
     parser.add_argument("--repetition", type=int, default=None)
@@ -77,9 +108,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_hidden_layers(value: str | None) -> list[int] | None:
+    if value is None:
+        return None
+    pieces = value.replace(",", " ").split()
+    if not pieces:
+        return None
+    widths = [int(piece) for piece in pieces]
+    if any(width <= 0 for width in widths):
+        raise ValueError("--hidden-layers must contain positive integers")
+    return widths
+
+
 def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
     base = load_yaml("configs/default.yaml") if Path("configs/default.yaml").exists() else {}
     cfg = deep_update(base, load_yaml(args.config))
+    hidden_layers = parse_hidden_layers(args.hidden_layers)
     cli = {
         "experiment": {
             "scenario": args.scenario,
@@ -100,6 +144,16 @@ def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
         },
         "dnn": {
             "output_activation": args.output_activation,
+            "architecture": args.dnn_architecture,
+            "hidden_layers": hidden_layers,
+            "depth_scale": args.depth_scale,
+            "width_scale": args.width_scale,
+            "min_depth": args.min_depth,
+            "max_depth": args.max_depth,
+            "min_width": args.min_width,
+            "max_width": args.max_width,
+            "width_multiple": args.width_multiple,
+            "architecture_rate_exponent": args.architecture_rate_exponent,
             "manifold_learning": args.manifold_learning,
             "manifold_input": args.manifold_input,
             "device": args.device,
@@ -134,6 +188,8 @@ def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
     }
     for key, value in defaults.items():
         exp.setdefault(key, value)
+    if hidden_layers is not None and args.dnn_architecture is None:
+        cfg["dnn"]["architecture"] = "fixed"
     if args.manifold_learning == "oracle" and args.manifold_input is None:
         cfg["dnn"]["manifold_input"] = "intrinsic"
     cfg["dnn"].setdefault("expected_count", exp["expected_count"])
@@ -173,6 +229,22 @@ def main(argv: list[str] | None = None) -> None:
         alpha=exp.get("alpha"),
     )
     data = simulate_dataset(true_intensity, n=n, z_dim=z_dim, rng=rng, covariate_sampler=cov_sampler)
+    data["metadata"].update(
+        {
+            "scenario": scenario,
+            "beta": float(true_intensity.beta),
+            "alpha": float(true_intensity.alpha),
+            "theory_rate_exponent": float(true_intensity.theory_rate_exponent(z_dim)),
+        }
+    )
+    cfg["dnn"].update(
+        {
+            "scenario": scenario,
+            "support": support,
+            "beta": float(true_intensity.beta),
+            "alpha": float(true_intensity.alpha),
+        }
+    )
     estimator = build_estimator(method, cfg)
     if method.lower() in {"dnn", "dnn_npmle"}:
         cfg["dnn"].setdefault("output_activation", "softplus")
@@ -199,9 +271,11 @@ def main(argv: list[str] | None = None) -> None:
     metadata = data["metadata"]
     is_dnn = method.lower() in {"dnn", "dnn_npmle"}
     is_manifold = metadata["support_type"] == "manifold"
+    architecture_tag = dnn_architecture_label(estimator.config) if is_dnn else None
     label = method_label(
         method,
         cfg["dnn"].get("output_activation") if is_dnn else None,
+        architecture_tag,
         cfg["dnn"].get("manifold_learning") if is_dnn and is_manifold else None,
     )
     run_id = f"{scenario}_{support}_z{z_dim}_n{n}_{label}_rep{repetition}_seed{seed}"
@@ -221,6 +295,12 @@ def main(argv: list[str] | None = None) -> None:
         "repetition": repetition,
         "method": label,
         "output_activation": cfg["dnn"].get("output_activation") if is_dnn else None,
+        "dnn_architecture": estimator.config.get("architecture") if is_dnn else None,
+        "dnn_architecture_tag": architecture_tag,
+        "dnn_hidden_layers": estimator.config.get("resolved_hidden_layers", estimator.config.get("hidden_layers")) if is_dnn else None,
+        "dnn_depth": estimator.config.get("architecture_depth_used") if is_dnn else None,
+        "dnn_width": estimator.config.get("architecture_width_used") if is_dnn else None,
+        "dnn_architecture_rate_exponent": estimator.config.get("architecture_rate_exponent_used") if is_dnn else None,
         "manifold_learning": cfg["dnn"].get("manifold_learning") if is_dnn and is_manifold else None,
         "manifold_input": cfg["dnn"].get("manifold_input") if is_dnn and is_manifold else None,
         "squared_hellinger": h2,

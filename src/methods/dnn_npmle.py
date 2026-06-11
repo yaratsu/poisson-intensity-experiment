@@ -30,7 +30,16 @@ class DNNNPMLEEstimator(Estimator):
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = {
+            "architecture": "theory",
             "hidden_layers": [128, 128, 128],
+            "depth_scale": 1.0,
+            "width_scale": 8.0,
+            "min_depth": 2,
+            "max_depth": 12,
+            "min_width": 32,
+            "max_width": 512,
+            "width_multiple": 8,
+            "architecture_rate_exponent": None,
             "output_activation": "softplus",
             "manifold_learning": "agnostic",
             "manifold_input": "intrinsic",
@@ -84,6 +93,8 @@ class DNNNPMLEEstimator(Estimator):
         point_arrays = self._event_point_arrays(data)
         point_dim = self._point_dim()
         self.input_dim = point_dim + z_dim
+        resolved_hidden_layers = self._resolve_hidden_layers(n, z_dim, point_dim)
+        self.config["resolved_hidden_layers"] = resolved_hidden_layers
         if self._uses_agnostic_manifold_learning():
             target = 1.0
         else:
@@ -197,7 +208,8 @@ class DNNNPMLEEstimator(Estimator):
         class Net(nn.Module):
             def __init__(self, outer: DNNNPMLEEstimator):
                 super().__init__()
-                dims = [input_dim] + list(outer.config["hidden_layers"]) + [1]
+                hidden_layers = outer.config.get("resolved_hidden_layers") or outer.config["hidden_layers"]
+                dims = [input_dim] + list(hidden_layers) + [1]
                 layers = []
                 for left, right in zip(dims[:-2], dims[1:-1]):
                     layer = nn.Linear(left, right)
@@ -217,6 +229,61 @@ class DNNNPMLEEstimator(Estimator):
                 return self.net(x).squeeze(-1)
 
         return Net(self)
+
+    def _resolve_hidden_layers(self, n: int, z_dim: int, point_dim: int) -> list[int]:
+        architecture = str(self.config.get("architecture", "theory")).lower()
+        if architecture in {"fixed", "manual"}:
+            return [int(width) for width in self.config.get("hidden_layers", [128, 128, 128])]
+        if architecture not in {"theory", "adaptive", "auto"}:
+            raise ValueError(f"Unknown DNN architecture mode: {architecture}")
+
+        gamma = self._architecture_rate_exponent(z_dim=z_dim, point_dim=point_dim)
+        gamma = float(np.clip(gamma, 1e-6, 0.999999))
+        n_eff = max(int(n), 3)
+
+        depth = int(math.ceil(float(self.config.get("depth_scale", 1.0)) * math.log(n_eff)))
+        depth = max(int(self.config.get("min_depth", 2)), depth)
+        depth = min(int(self.config.get("max_depth", 12)), depth)
+
+        raw_width = float(self.config.get("width_scale", 8.0)) * (n_eff ** ((1.0 - gamma) / 2.0))
+        width = int(math.ceil(raw_width))
+        width = max(int(self.config.get("min_width", 32)), width)
+        width = min(int(self.config.get("max_width", 512)), width)
+        multiple = int(self.config.get("width_multiple", 1))
+        if multiple > 1:
+            width = int(math.ceil(width / multiple) * multiple)
+
+        self.config["architecture_rate_exponent_used"] = gamma
+        self.config["architecture_depth_used"] = depth
+        self.config["architecture_width_used"] = width
+        return [width] * depth
+
+    def _architecture_rate_exponent(self, z_dim: int, point_dim: int) -> float:
+        explicit = self.config.get("architecture_rate_exponent")
+        if explicit is not None:
+            return float(explicit)
+
+        scenario = str(self.config.get("scenario", self.metadata.get("scenario", ""))).lower()
+        beta = float(self.config.get("beta", self.metadata.get("beta", 2.0)))
+        alpha = self.config.get("alpha", self.metadata.get("alpha"))
+        if alpha is None:
+            alpha = 1.0 if scenario == "near_zero" else 0.0
+        alpha = float(alpha)
+        numerator = (1.0 + min(alpha, 1.0)) * beta
+
+        if scenario == "compositional":
+            effective_dim = self.config.get("theory_effective_dim")
+            if effective_dim is None:
+                effective_dim = min(int(self.metadata.get("event_dim", point_dim)) + int(z_dim), 4)
+        elif self.metadata.get("support_type") == "manifold":
+            if self._uses_agnostic_manifold_learning():
+                effective_dim = int(point_dim) + int(z_dim)
+            else:
+                effective_dim = int(self.metadata.get("manifold_dim", point_dim)) + int(z_dim)
+        else:
+            effective_dim = int(self.metadata.get("event_dim", point_dim)) + int(z_dim)
+
+        return float(numerator / (numerator + max(float(effective_dim), 1e-12)))
 
     def _model_intensity(self, inputs):
         _torch, _nn, F = _load_torch()

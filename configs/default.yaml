@@ -14,7 +14,17 @@ experiment:
   results_dir: results
 
 dnn:
+  # theory: choose depth L ~= log(n) and width r ~= sqrt(n * n^{-gamma}).
+  # fixed: use hidden_layers exactly as listed below.
+  architecture: theory
   hidden_layers: [128, 128, 128]
+  depth_scale: 1.0
+  width_scale: 8.0
+  min_depth: 2
+  max_depth: 12
+  min_width: 32
+  max_width: 512
+  width_multiple: 8
   output_activation: softplus
   # agnostic: embedded observed events + empirical support quadrature.
   # oracle: true manifold quadrature; CLI defaults to intrinsic input unless overridden.
