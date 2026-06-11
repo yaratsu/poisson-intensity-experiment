@@ -76,13 +76,39 @@ bash scripts/run_all_gpu.sh
 This runs the DNN-NPMLE with both `softplus` and `relu` output activations across the configured scenario grid. For a small test:
 
 ```bash
-N_VALUES="100" Z_DIMS="0 1" REPETITIONS="0" EPOCHS="30" bash scripts/run_all_gpu.sh
+bash scripts/run_all_gpu.sh \
+  --scenario compositional \
+  --support euclidean2d \
+  --z-dim 5 \
+  --n 100 \
+  --repetitions 1 \
+  --epochs 30 \
+  --output-activations softplus
+```
+
+The all-run scripts accept grid arguments directly. Use singular options for one setting and plural options for space-separated grids:
+
+```bash
+bash scripts/run_all_gpu.sh \
+  --scenarios "compositional near_zero" \
+  --supports "euclidean1d euclidean2d" \
+  --z-dims "0 1 5" \
+  --n-values "100 316 1000" \
+  --repetitions 3 \
+  --epochs 150
 ```
 
 For oracle manifold ablations on Kaggle:
 
 ```bash
-MANIFOLD_LEARNING=oracle N_VALUES="100" Z_DIMS="1" REPETITIONS="0" EPOCHS="30" bash scripts/run_all_gpu.sh
+bash scripts/run_all_gpu.sh \
+  --scenario manifold \
+  --support circle \
+  --z-dim 1 \
+  --n 100 \
+  --repetitions 1 \
+  --epochs 30 \
+  --manifold-learning oracle
 ```
 
 ## Local Kernel Baselines
@@ -92,6 +118,18 @@ bash scripts/run_all_local.sh
 ```
 
 This runs Euclidean and covariate product-kernel baselines on `[0,1]` and `[0,1]^2`. The manifold kernel baseline uses geodesic distances and is therefore oracle-only; run it explicitly with `RUN_ORACLE_MANIFOLD_KERNEL=1 bash scripts/run_all_local.sh`.
+
+For one local baseline grid:
+
+```bash
+bash scripts/run_all_local.sh \
+  --scenario near_zero \
+  --support euclidean2d \
+  --z-dim 1 \
+  --n 100 \
+  --repetitions 3 \
+  --epsilon 1e-4
+```
 
 ## Aggregate Results
 
