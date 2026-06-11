@@ -1,0 +1,49 @@
+experiment:
+  scenario: compositional
+  support: euclidean1d
+  z_dim: 0
+  n: 100
+  repetition: 0
+  method: dnn_npmle
+  expected_count: 30
+  epsilon: 1.0e-4
+  beta: 2.0
+  eval_z: 64
+  eval_points: 512
+  covariate_sampler: uniform
+  results_dir: results
+
+dnn:
+  hidden_layers: [128, 128, 128]
+  output_activation: softplus
+  manifold_input: intrinsic
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 64
+  max_epochs: 150
+  patience: 15
+  validation_fraction: 0.2
+  integration_points: 128
+  grad_clip: 5.0
+  eps: 1.0e-8
+  dtype: float32
+  device: auto
+
+kernel_euclidean:
+  mode: joint_kernel
+  kernel: gaussian
+  a_n: 1.0e-6
+  validation_fraction: 0.2
+  validation_integration_points: 128
+
+kernel_covariate:
+  mode: joint_kernel
+  kernel: gaussian
+  a_n: 1.0e-6
+  validation_fraction: 0.2
+  validation_integration_points: 128
+
+kernel_manifold:
+  a_n: 1.0e-6
+  validation_fraction: 0.2
+  validation_integration_points: 128

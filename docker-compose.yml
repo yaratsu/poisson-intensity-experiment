@@ -1,0 +1,20 @@
+services:
+  poisson-exp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: poisson-intensity-experiment:dev
+    working_dir: /workspace
+    command: sleep infinity
+    environment:
+      MPLBACKEND: Agg
+      UV_CACHE_DIR: /workspace/.uv-cache
+      VIRTUAL_ENV: /workspace/.venv
+      PATH: /workspace/.venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - .:/workspace:cached
+      - uv-cache:/workspace/.uv-cache
+    shm_size: "8gb"
+
+volumes:
+  uv-cache:
