@@ -32,6 +32,7 @@ class DNNNPMLEEstimator(Estimator):
         self.config = {
             "hidden_layers": [128, 128, 128],
             "output_activation": "softplus",
+            "manifold_learning": "agnostic",
             "manifold_input": "intrinsic",
             "learning_rate": 1e-3,
             "weight_decay": 1e-4,
@@ -60,6 +61,8 @@ class DNNNPMLEEstimator(Estimator):
     def fit(self, data: dict[str, Any]) -> "DNNNPMLEEstimator":
         torch, nn, F = _load_torch()
         self.metadata = dict(data["metadata"])
+        if self._uses_agnostic_manifold_learning():
+            self.config["manifold_input"] = "embedded"
         seed = int(self.config.get("seed", 0))
         rng = np.random.default_rng(seed)
         torch.manual_seed(seed)
@@ -81,8 +84,11 @@ class DNNNPMLEEstimator(Estimator):
         point_arrays = self._event_point_arrays(data)
         point_dim = self._point_dim()
         self.input_dim = point_dim + z_dim
-        target = float(self.config.get("expected_count", self.metadata.get("expected_count", 30.0)))
-        target = target / max(float(self.metadata.get("volume", 1.0)), 1e-12)
+        if self._uses_agnostic_manifold_learning():
+            target = 1.0
+        else:
+            target = float(self.config.get("expected_count", self.metadata.get("expected_count", 30.0)))
+            target = target / max(float(self.metadata.get("volume", 1.0)), 1e-12)
         self.model = self._build_model(self.input_dim, target).to(self._device, dtype=self._torch_dtype)
 
         all_indices = np.arange(n)
@@ -92,16 +98,7 @@ class DNNNPMLEEstimator(Estimator):
         val_indices = all_indices[:n_val]
         train_indices = all_indices[n_val:] if n_val > 0 else all_indices
 
-        q_points, q_weights, q_embedded = make_quadrature(
-            self.metadata,
-            int(self.config["integration_points"]),
-            rng,
-        )
-        if self.metadata["support_type"] == "manifold" and self.config["manifold_input"] == "embedded":
-            q_model = q_embedded
-        else:
-            q_model = q_points
-        q_model = points_for_model(q_model, self.metadata, self.config["manifold_input"])
+        q_model, q_weights = self._training_quadrature(data, rng)
         q_points_t = torch.as_tensor(q_model, dtype=self._torch_dtype, device=self._device)
         q_weights_t = torch.as_tensor(q_weights, dtype=self._torch_dtype, device=self._device)
 
@@ -278,11 +275,48 @@ class DNNNPMLEEstimator(Estimator):
         return float(np.mean(losses)) if losses else math.nan
 
     def _event_point_arrays(self, data: dict[str, Any]) -> list[np.ndarray]:
+        if self._uses_agnostic_manifold_learning():
+            return [np.asarray(arr, dtype=np.float64) for arr in data["events"]]
         if self.metadata["support_type"] == "manifold" and self.config["manifold_input"] == "embedded":
             raw_arrays = data["events"]
         else:
             raw_arrays = data["event_coords"]
         return [self._prepare_points(arr) for arr in raw_arrays]
+
+    def _training_quadrature(
+        self,
+        data: dict[str, Any],
+        rng: np.random.Generator,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if self._uses_agnostic_manifold_learning():
+            arrays = [np.asarray(arr, dtype=np.float64) for arr in data["events"] if arr.shape[0] > 0]
+            q = int(self.config["integration_points"])
+            if arrays:
+                flat = np.concatenate(arrays, axis=0)
+                replace = flat.shape[0] < q
+                choice = rng.choice(flat.shape[0], size=q, replace=replace)
+                q_model = flat[choice]
+            else:
+                dim = int(self.metadata["embedding_dim"])
+                q_model = rng.normal(size=(q, dim)).astype(np.float64)
+                q_model /= np.maximum(np.linalg.norm(q_model, axis=1, keepdims=True), 1e-12)
+
+            counts = np.asarray(data.get("counts", []), dtype=np.float64)
+            mean_count = float(np.mean(counts)) if counts.size else float(self.config.get("expected_count", 30.0))
+            weights = np.full(q_model.shape[0], mean_count / max(q_model.shape[0], 1), dtype=np.float64)
+            return q_model.astype(np.float64), weights
+
+        q_points, q_weights, q_embedded = make_quadrature(
+            self.metadata,
+            int(self.config["integration_points"]),
+            rng,
+        )
+        if self.metadata["support_type"] == "manifold" and self.config["manifold_input"] == "embedded":
+            q_model = q_embedded
+        else:
+            q_model = q_points
+        q_model = points_for_model(q_model, self.metadata, self.config["manifold_input"])
+        return q_model.astype(np.float64), q_weights.astype(np.float64)
 
     def _prepare_points(self, X: np.ndarray) -> np.ndarray:
         X = np.asarray(X, dtype=np.float64)
@@ -294,6 +328,12 @@ class DNNNPMLEEstimator(Estimator):
         if self.metadata["support_type"] == "manifold" and self.config["manifold_input"] == "embedded":
             return int(self.metadata["embedding_dim"])
         return int(self.metadata["coord_dim"])
+
+    def _uses_agnostic_manifold_learning(self) -> bool:
+        return (
+            self.metadata.get("support_type") == "manifold"
+            and str(self.config.get("manifold_learning", "agnostic")).lower() == "agnostic"
+        )
 
     def _broadcast_z(self, n: int, Z: np.ndarray) -> np.ndarray:
         if Z.ndim == 1:

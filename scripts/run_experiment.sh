@@ -13,6 +13,11 @@ set -euo pipefail
 #   --repetition 0 \
 #   --expected-count 30 \
 #   --device cuda
+# Manifold oracle ablation example:
+# bash scripts/run_experiment.sh \
+#   --scenario manifold --support circle --z-dim 1 --n 1000 \
+#   --method dnn_npmle --output-activation softplus \
+#   --manifold-learning oracle --repetition 0 --device cuda
 
 if [[ -n "${PYTHON_BIN:-}" ]]; then
   read -r -a PYTHON_CMD <<< "$PYTHON_BIN"

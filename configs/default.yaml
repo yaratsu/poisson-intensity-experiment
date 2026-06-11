@@ -16,7 +16,10 @@ experiment:
 dnn:
   hidden_layers: [128, 128, 128]
   output_activation: softplus
-  manifold_input: intrinsic
+  # agnostic: embedded observed events + empirical support quadrature.
+  # oracle: true manifold quadrature; CLI defaults to intrinsic input unless overridden.
+  manifold_learning: agnostic
+  manifold_input: embedded
   learning_rate: 1.0e-3
   weight_decay: 1.0e-4
   batch_size: 64

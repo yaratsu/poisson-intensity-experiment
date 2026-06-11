@@ -7,11 +7,16 @@ set -euo pipefail
 #
 # Override the grid by setting environment variables, e.g.
 #   N_VALUES="100 316" Z_DIMS="0 1" bash scripts/run_all_gpu.sh
+# Manifold DNN training defaults to geometry-agnostic mode. For oracle ablations:
+#   MANIFOLD_LEARNING=oracle bash scripts/run_all_gpu.sh
+# Add MANIFOLD_INPUT=embedded to use embedded coordinates with oracle quadrature.
 
 N_VALUES="${N_VALUES:-100 316 1000 3162 10000}"
 Z_DIMS="${Z_DIMS:-0 1 5 10}"
 REPETITIONS="${REPETITIONS:-0 1 2}"
 EPOCHS="${EPOCHS:-150}"
+MANIFOLD_LEARNING="${MANIFOLD_LEARNING:-agnostic}"
+MANIFOLD_INPUT="${MANIFOLD_INPUT:-}"
 
 run_case() {
   local scenario="$1"
@@ -20,6 +25,13 @@ run_case() {
   local n="$4"
   local rep="$5"
   local activation="$6"
+  local manifold_args=()
+  if [[ "$scenario" == "manifold" ]]; then
+    manifold_args+=(--manifold-learning "$MANIFOLD_LEARNING")
+    if [[ -n "$MANIFOLD_INPUT" ]]; then
+      manifold_args+=(--manifold-input "$MANIFOLD_INPUT")
+    fi
+  fi
   bash scripts/run_experiment.sh \
     --scenario "$scenario" \
     --support "$support" \
@@ -30,7 +42,8 @@ run_case() {
     --repetition "$rep" \
     --expected-count 30 \
     --device cuda \
-    --max-epochs "$EPOCHS"
+    --max-epochs "$EPOCHS" \
+    "${manifold_args[@]}"
 }
 
 for z_dim in $Z_DIMS; do

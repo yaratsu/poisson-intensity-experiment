@@ -21,9 +21,11 @@ for z_dim in $Z_DIMS; do
           bash scripts/run_experiment.sh --scenario "$scenario" --support "$support" --z-dim "$z_dim" --n "$n" --repetition "$rep" --method kernel_covariate
         done
       done
-      for support in circle sphere; do
-        bash scripts/run_experiment.sh --scenario manifold --support "$support" --z-dim "$z_dim" --n "$n" --repetition "$rep" --method kernel_manifold
-      done
+      if [[ "${RUN_ORACLE_MANIFOLD_KERNEL:-0}" == "1" ]]; then
+        for support in circle sphere; do
+          bash scripts/run_experiment.sh --scenario manifold --support "$support" --z-dim "$z_dim" --n "$n" --repetition "$rep" --method kernel_manifold
+        done
+      fi
     done
   done
 done

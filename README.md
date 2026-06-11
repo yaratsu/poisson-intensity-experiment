@@ -48,6 +48,23 @@ The runner writes per-run JSON metrics to `results/metrics/`, models to `results
 
 For `z_dim=0`, covariates are always represented as `np.empty((n, 0))`.
 
+For manifold experiments, training is geometry-agnostic by default. To run the oracle diagnostic version that uses the true manifold quadrature and intrinsic coordinates, add `--manifold-learning oracle`:
+
+```bash
+bash scripts/run_experiment.sh \
+  --scenario manifold \
+  --support circle \
+  --z-dim 1 \
+  --n 1000 \
+  --method dnn_npmle \
+  --output-activation softplus \
+  --manifold-learning oracle \
+  --repetition 0 \
+  --device auto
+```
+
+If you want oracle quadrature while still feeding embedded coordinates to the network, add `--manifold-input embedded`.
+
 ## GPU Runs on Kaggle
 
 Enable a GPU accelerator, install dependencies, then run:
@@ -62,13 +79,19 @@ This runs the DNN-NPMLE with both `softplus` and `relu` output activations acros
 N_VALUES="100" Z_DIMS="0 1" REPETITIONS="0" EPOCHS="30" bash scripts/run_all_gpu.sh
 ```
 
+For oracle manifold ablations on Kaggle:
+
+```bash
+MANIFOLD_LEARNING=oracle N_VALUES="100" Z_DIMS="1" REPETITIONS="0" EPOCHS="30" bash scripts/run_all_gpu.sh
+```
+
 ## Local Kernel Baselines
 
 ```bash
 bash scripts/run_all_local.sh
 ```
 
-This runs Euclidean and covariate product-kernel baselines on `[0,1]` and `[0,1]^2`, and the manifold kernel baseline on `S^1` and `S^2`.
+This runs Euclidean and covariate product-kernel baselines on `[0,1]` and `[0,1]^2`. The manifold kernel baseline uses geodesic distances and is therefore oracle-only; run it explicitly with `RUN_ORACLE_MANIFOLD_KERNEL=1 bash scripts/run_all_local.sh`.
 
 ## Aggregate Results
 
@@ -92,10 +115,10 @@ This creates:
 
 ## Methods
 
-- `dnn_npmle`: the proposed deep-learning NPMLE trained with the Poisson process negative log-likelihood.
+- `dnn_npmle`: the proposed deep-learning NPMLE trained with the Poisson process negative log-likelihood. For manifold scenarios, the default training mode is `manifold_learning: agnostic`: the network uses embedded event coordinates and an empirical support quadrature built only from observed events. It does not use true intrinsic coordinates, geodesic distances, manifold volume, or circle/sphere quadrature during training. True manifold quadrature is used only for simulation, oracle evaluation, and plotting. Set `--manifold-learning oracle` for diagnostic ablations; this defaults to intrinsic manifold coordinates unless `--manifold-input embedded` is supplied.
 - `kernel_covariate`: Klutchnikoff-Massiot-style conditional product-kernel estimator with denominator trimming.
 - `kernel_euclidean`: Euclidean pooled or joint product-kernel estimator.
-- `kernel_manifold`: Ward et al.-style geodesic kernel estimator with mesh/quadrature integration.
+- `kernel_manifold`: Ward et al.-style geodesic kernel estimator with mesh/quadrature integration. This is an oracle/diagnostic baseline because it uses manifold geometry; default local scripts skip it unless `RUN_ORACLE_MANIFOLD_KERNEL=1` is set.
 - `optional_bayes/SGCPGaussianProcessEstimator`: interface stub for a Kirichenko-van Zanten-style sigmoidal Gaussian Cox process.
 - `optional_bayes/BayesianCovariateDrivenEstimator`: interface stub for a Giordano et al.-style Bayesian covariate-driven estimator.
 

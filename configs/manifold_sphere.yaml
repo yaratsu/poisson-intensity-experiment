@@ -7,4 +7,5 @@ experiment:
   beta: 2.0
 
 dnn:
-  manifold_input: intrinsic
+  manifold_learning: agnostic
+  manifold_input: embedded

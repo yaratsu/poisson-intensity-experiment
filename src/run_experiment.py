@@ -33,10 +33,17 @@ def build_estimator(method: str, config: dict[str, Any]) -> Any:
     raise ValueError(f"Unknown method: {method}")
 
 
-def method_label(method: str, output_activation: str | None = None) -> str:
+def method_label(
+    method: str,
+    output_activation: str | None = None,
+    manifold_learning: str | None = None,
+) -> str:
     method = method.lower()
     if method in {"dnn", "dnn_npmle"}:
-        return f"dnn_npmle_{output_activation or 'softplus'}"
+        label = f"dnn_npmle_{output_activation or 'softplus'}"
+        if manifold_learning:
+            label = f"{label}_{manifold_learning}"
+        return label
     return method
 
 
@@ -49,6 +56,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--n", type=int, default=None)
     parser.add_argument("--method", default=None)
     parser.add_argument("--output-activation", choices=["softplus", "relu"], default=None)
+    parser.add_argument("--manifold-learning", choices=["agnostic", "oracle"], default=None)
     parser.add_argument("--manifold-input", choices=["intrinsic", "embedded"], default=None)
     parser.add_argument("--repetition", type=int, default=None)
     parser.add_argument("--expected-count", type=float, default=None)
@@ -92,6 +100,7 @@ def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
         },
         "dnn": {
             "output_activation": args.output_activation,
+            "manifold_learning": args.manifold_learning,
             "manifold_input": args.manifold_input,
             "device": args.device,
             "dtype": args.dtype,
@@ -125,6 +134,8 @@ def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
     }
     for key, value in defaults.items():
         exp.setdefault(key, value)
+    if args.manifold_learning == "oracle" and args.manifold_input is None:
+        cfg["dnn"]["manifold_input"] = "intrinsic"
     cfg["dnn"].setdefault("expected_count", exp["expected_count"])
     cfg["dnn"].setdefault("seed", exp.get("seed") or 0)
     return cfg
@@ -185,14 +196,20 @@ def main(argv: list[str] | None = None) -> None:
     results_dir = Path(exp.get("results_dir", "results"))
     metrics_dir = ensure_dir(results_dir / "metrics")
     models_dir = ensure_dir(results_dir / "models")
-    label = method_label(method, cfg["dnn"].get("output_activation") if method.lower() in {"dnn", "dnn_npmle"} else None)
+    metadata = data["metadata"]
+    is_dnn = method.lower() in {"dnn", "dnn_npmle"}
+    is_manifold = metadata["support_type"] == "manifold"
+    label = method_label(
+        method,
+        cfg["dnn"].get("output_activation") if is_dnn else None,
+        cfg["dnn"].get("manifold_learning") if is_dnn and is_manifold else None,
+    )
     run_id = f"{scenario}_{support}_z{z_dim}_n{n}_{label}_rep{repetition}_seed{seed}"
     model_suffix = ".pt" if method.lower() in {"dnn", "dnn_npmle"} else ".pkl"
     estimator.save(models_dir / f"{run_id}{model_suffix}")
     if hasattr(estimator, "history"):
         save_json({"history": estimator.history}, metrics_dir / f"history_{run_id}.json")
 
-    metadata = data["metadata"]
     row = {
         "scenario": scenario,
         "support": support,
@@ -203,7 +220,9 @@ def main(argv: list[str] | None = None) -> None:
         "n": n,
         "repetition": repetition,
         "method": label,
-        "output_activation": cfg["dnn"].get("output_activation") if method.lower() in {"dnn", "dnn_npmle"} else None,
+        "output_activation": cfg["dnn"].get("output_activation") if is_dnn else None,
+        "manifold_learning": cfg["dnn"].get("manifold_learning") if is_dnn and is_manifold else None,
+        "manifold_input": cfg["dnn"].get("manifold_input") if is_dnn and is_manifold else None,
         "squared_hellinger": h2,
         "theory_rate_exponent": true_intensity.theory_rate_exponent(z_dim),
         "seed": seed,
