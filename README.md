@@ -65,13 +65,14 @@ bash scripts/run_experiment.sh \
 
 If you want oracle quadrature while still feeding embedded coordinates to the network, add `--manifold-input embedded`.
 
-By default, the DNN architecture follows the paper's theoretical scaling. For sample size `n` and squared-Hellinger rate exponent `gamma`, the runner uses
+By default, the DNN architecture follows the paper's theoretical scaling, normalized at `n_ref=1000`. For sample size `n` and squared-Hellinger rate exponent `gamma`, the runner uses
 
 ```text
-depth ~= log(n),   width ~= n^((1 - gamma) / 2),
+depth = ceil(3 * log(n) / log(1000)),
+width = round_up_to_multiple(64 * (n / 1000)^((1 - gamma) / 2), 8).
 ```
 
-with practical constants and caps from `configs/default.yaml`. The default method label includes the architecture tag, for example `dnn_npmle_softplus_theory_ds1_ws8`. The resolved architecture is saved in each metrics JSON/CSV as `dnn_hidden_layers`, `dnn_depth`, `dnn_width`, and `dnn_architecture_rate_exponent`. Use `--dnn-architecture fixed --hidden-layers "128 128 128"` to reproduce a fixed architecture.
+There is no min/max depth or width clipping in the default theory architecture. The default method label includes the architecture tag, for example `dnn_npmle_softplus_theory_ref1000_ds3_ws64`. The resolved architecture is saved in each metrics JSON/CSV as `dnn_hidden_layers`, `dnn_depth`, `dnn_width`, and `dnn_architecture_rate_exponent`. Use `--dnn-architecture fixed --hidden-layers "128 128 128"` to reproduce a fixed architecture.
 
 ## GPU Runs on Kaggle
 

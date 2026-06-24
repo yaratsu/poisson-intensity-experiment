@@ -65,8 +65,9 @@ def dnn_architecture_label(config: dict[str, Any]) -> str:
     if architecture in {"theory", "adaptive", "auto"}:
         return (
             f"{architecture}"
+            f"_ref{_tag_number(config.get('architecture_reference_n', 1000))}"
             f"_ds{_tag_number(config.get('depth_scale', 1.0))}"
-            f"_ws{_tag_number(config.get('width_scale', 8.0))}"
+            f"_ws{_tag_number(config.get('width_scale', 64.0))}"
         )
     widths = config.get("hidden_layers") or []
     width_tag = "x".join(str(int(width)) for width in widths) if widths else "custom"
@@ -84,12 +85,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-activation", choices=["softplus", "relu"], default=None)
     parser.add_argument("--dnn-architecture", choices=["theory", "adaptive", "auto", "fixed", "manual"], default=None)
     parser.add_argument("--hidden-layers", default=None, help="Comma- or space-separated hidden widths for fixed/manual DNN architecture.")
+    parser.add_argument("--architecture-reference-n", type=float, default=None)
     parser.add_argument("--depth-scale", type=float, default=None)
     parser.add_argument("--width-scale", type=float, default=None)
-    parser.add_argument("--min-depth", type=int, default=None)
-    parser.add_argument("--max-depth", type=int, default=None)
-    parser.add_argument("--min-width", type=int, default=None)
-    parser.add_argument("--max-width", type=int, default=None)
     parser.add_argument("--width-multiple", type=int, default=None)
     parser.add_argument("--architecture-rate-exponent", type=float, default=None)
     parser.add_argument("--manifold-learning", choices=["agnostic", "oracle"], default=None)
@@ -189,12 +187,9 @@ def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
             "output_activation": args.output_activation,
             "architecture": args.dnn_architecture,
             "hidden_layers": hidden_layers,
+            "architecture_reference_n": args.architecture_reference_n,
             "depth_scale": args.depth_scale,
             "width_scale": args.width_scale,
-            "min_depth": args.min_depth,
-            "max_depth": args.max_depth,
-            "min_width": args.min_width,
-            "max_width": args.max_width,
             "width_multiple": args.width_multiple,
             "architecture_rate_exponent": args.architecture_rate_exponent,
             "manifold_learning": args.manifold_learning,

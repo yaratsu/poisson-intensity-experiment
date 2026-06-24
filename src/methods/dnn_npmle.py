@@ -32,12 +32,9 @@ class DNNNPMLEEstimator(Estimator):
         self.config = {
             "architecture": "theory",
             "hidden_layers": [128, 128, 128],
-            "depth_scale": 1.0,
-            "width_scale": 8.0,
-            "min_depth": 2,
-            "max_depth": 12,
-            "min_width": 32,
-            "max_width": 512,
+            "architecture_reference_n": 1000,
+            "depth_scale": 3.0,
+            "width_scale": 64.0,
             "width_multiple": 8,
             "architecture_rate_exponent": None,
             "output_activation": "softplus",
@@ -241,14 +238,14 @@ class DNNNPMLEEstimator(Estimator):
         gamma = float(np.clip(gamma, 1e-6, 0.999999))
         n_eff = max(int(n), 3)
 
-        depth = int(math.ceil(float(self.config.get("depth_scale", 1.0)) * math.log(n_eff)))
-        depth = max(int(self.config.get("min_depth", 2)), depth)
-        depth = min(int(self.config.get("max_depth", 12)), depth)
+        reference_n = max(float(self.config.get("architecture_reference_n", 1000.0)), 3.0)
+        raw_depth = float(self.config.get("depth_scale", 3.0)) * math.log(n_eff) / math.log(reference_n)
+        depth = int(math.ceil(raw_depth - 1e-12))
+        depth = max(1, depth)
 
-        raw_width = float(self.config.get("width_scale", 8.0)) * (n_eff ** ((1.0 - gamma) / 2.0))
+        raw_width = float(self.config.get("width_scale", 64.0)) * ((n_eff / reference_n) ** ((1.0 - gamma) / 2.0))
         width = int(math.ceil(raw_width))
-        width = max(int(self.config.get("min_width", 32)), width)
-        width = min(int(self.config.get("max_width", 512)), width)
+        width = max(1, width)
         multiple = int(self.config.get("width_multiple", 1))
         if multiple > 1:
             width = int(math.ceil(width / multiple) * multiple)

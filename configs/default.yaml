@@ -19,16 +19,15 @@ experiment:
   results_dir: results
 
 dnn:
-  # theory: choose depth L ~= log(n) and width r ~= sqrt(n * n^{-gamma}).
+  # theory: choose depth/width relative to architecture_reference_n.
+  # Defaults give depth=3 and width=64 at n=1000, then scale as log(n)
+  # and (n/reference_n)^((1-gamma)/2), without min/max clipping.
   # fixed: use hidden_layers exactly as listed below.
   architecture: theory
   hidden_layers: [128, 128, 128]
-  depth_scale: 1.0
-  width_scale: 8.0
-  min_depth: 2
-  max_depth: 12
-  min_width: 32
-  max_width: 512
+  architecture_reference_n: 1000
+  depth_scale: 3.0
+  width_scale: 64.0
   width_multiple: 8
   output_activation: softplus
   # agnostic: embedded observed events + empirical support quadrature.
