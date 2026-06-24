@@ -36,6 +36,9 @@ DNN and intensity options:
   --width-scale C              Theory width at the reference sample size.
   --width-multiple K           Round theory width up to this multiple.
   --epochs E                   Number of DNN epochs.
+  --batch-size B               Mini-batch size over replicated processes.
+  --integration-points Q       Quadrature points per replicate in each mini-batch.
+  --quadrature-mode MODE       stochastic or fixed. Default: stochastic.
   --output-activations "A B"    softplus, relu, or both.
   --device DEVICE              cuda, cpu, or auto.
   --manifold-learning MODE     agnostic or oracle.
@@ -89,6 +92,9 @@ DEPTH_SCALE="${DEPTH_SCALE:-3.0}"
 WIDTH_SCALE="${WIDTH_SCALE:-64.0}"
 WIDTH_MULTIPLE="${WIDTH_MULTIPLE:-8}"
 EPOCHS="${EPOCHS:-150}"
+BATCH_SIZE="${BATCH_SIZE:-64}"
+INTEGRATION_POINTS="${INTEGRATION_POINTS:-128}"
+QUADRATURE_MODE="${QUADRATURE_MODE:-stochastic}"
 DEVICE="${DEVICE:-cuda}"
 EXPECTED_COUNT="${EXPECTED_COUNT:-30}"
 EPSILON="${EPSILON:-}"
@@ -119,6 +125,9 @@ while [[ $# -gt 0 ]]; do
     --width-scale) WIDTH_SCALE="$2"; shift 2 ;;
     --width-multiple) WIDTH_MULTIPLE="$2"; shift 2 ;;
     --epochs) EPOCHS="$2"; shift 2 ;;
+    --batch-size) BATCH_SIZE="$2"; shift 2 ;;
+    --integration-points) INTEGRATION_POINTS="$2"; shift 2 ;;
+    --quadrature-mode) QUADRATURE_MODE="$2"; shift 2 ;;
     --output-activations|--activations) OUTPUT_ACTIVATIONS="$2"; shift 2 ;;
     --device) DEVICE="$2"; shift 2 ;;
     --manifold-learning) MANIFOLD_LEARNING="$2"; shift 2 ;;
@@ -158,6 +167,9 @@ run_case() {
     --depth-scale "$DEPTH_SCALE"
     --width-scale "$WIDTH_SCALE"
     --width-multiple "$WIDTH_MULTIPLE"
+    --batch-size "$BATCH_SIZE"
+    --integration-points "$INTEGRATION_POINTS"
+    --quadrature-mode "$QUADRATURE_MODE"
   )
   if [[ -n "$HIDDEN_LAYERS" ]]; then
     dnn_args+=(--hidden-layers "$HIDDEN_LAYERS")

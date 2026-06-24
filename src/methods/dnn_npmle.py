@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from ..geometry import sample_uniform_circle, sample_uniform_sphere
 from ..integration import make_quadrature
 from ..intensities import points_for_model
 from ..utils import ensure_dir, inverse_softplus
@@ -47,6 +48,7 @@ class DNNNPMLEEstimator(Estimator):
             "patience": 15,
             "validation_fraction": 0.2,
             "integration_points": 128,
+            "quadrature_mode": "stochastic",
             "grad_clip": 5.0,
             "eps": 1e-8,
             "dtype": "float32",
@@ -106,9 +108,13 @@ class DNNNPMLEEstimator(Estimator):
         val_indices = all_indices[:n_val]
         train_indices = all_indices[n_val:] if n_val > 0 else all_indices
 
-        q_model, q_weights = self._training_quadrature(data, rng)
-        q_points_t = torch.as_tensor(q_model, dtype=self._torch_dtype, device=self._device)
-        q_weights_t = torch.as_tensor(q_weights, dtype=self._torch_dtype, device=self._device)
+        quadrature_state = self._quadrature_state(data)
+        fixed_quadrature = None
+        quadrature_mode = str(self.config.get("quadrature_mode", "stochastic")).lower()
+        if quadrature_mode == "fixed":
+            fixed_quadrature = self._training_quadrature(data, rng)
+        elif quadrature_mode != "stochastic":
+            raise ValueError(f"Unknown DNN quadrature mode: {quadrature_mode}")
 
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -120,20 +126,39 @@ class DNNNPMLEEstimator(Estimator):
         best_val = math.inf
         bad_epochs = 0
 
-        for _epoch in range(int(self.config["max_epochs"])):
+        for epoch in range(int(self.config["max_epochs"])):
             rng.shuffle(train_indices)
             train_losses = []
             self.model.train()
             for start in range(0, len(train_indices), batch_size):
                 batch = train_indices[start : start + batch_size]
                 optimizer.zero_grad(set_to_none=True)
-                loss = self._batch_nll(batch, point_arrays, Z, q_points_t, q_weights_t, torch, F)
+                loss = self._batch_nll(
+                    batch,
+                    point_arrays,
+                    Z,
+                    quadrature_state,
+                    rng,
+                    torch,
+                    F,
+                    fixed_quadrature,
+                )
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), float(self.config["grad_clip"]))
                 optimizer.step()
                 train_losses.append(float(loss.detach().cpu().item()))
             train_nll = float(np.mean(train_losses)) if train_losses else math.nan
-            val_nll = self._validation_nll(val_indices, point_arrays, Z, q_points_t, q_weights_t, torch, F)
+            val_rng = np.random.default_rng(seed + 10_000 + epoch)
+            val_nll = self._validation_nll(
+                val_indices,
+                point_arrays,
+                Z,
+                quadrature_state,
+                val_rng,
+                torch,
+                F,
+                fixed_quadrature,
+            )
             self.history["train_nll"].append(train_nll)
             self.history["val_nll"].append(val_nll)
             monitor = val_nll if np.isfinite(val_nll) else train_nll
@@ -292,7 +317,7 @@ class DNNNPMLEEstimator(Estimator):
             return F.softplus(raw) + eps
         raise ValueError(f"Unknown output activation: {self.config['output_activation']}")
 
-    def _batch_nll(self, batch, point_arrays, Z, q_points_t, q_weights_t, torch, F):
+    def _batch_nll(self, batch, point_arrays, Z, quadrature_state, rng, torch, F, fixed_quadrature=None):
         batch = np.asarray(batch, dtype=np.int64)
         z_dim = Z.shape[1]
         event_parts = []
@@ -313,20 +338,31 @@ class DNNNPMLEEstimator(Estimator):
             intensity = self._model_intensity(event_inputs_t)
             loss = loss - torch.log(torch.clamp(intensity, min=float(self.config["eps"]))).sum() / batch_size
 
-        q = q_points_t.shape[0]
+        q_model, q_weights = self._batch_quadrature(
+            max(len(batch), 1),
+            quadrature_state,
+            rng,
+            fixed_quadrature,
+        )
+        q = q_model.shape[1]
+        q_points_t = torch.as_tensor(
+            q_model.reshape(batch_size * q, -1),
+            dtype=self._torch_dtype,
+            device=self._device,
+        )
+        q_weights_t = torch.as_tensor(q_weights, dtype=self._torch_dtype, device=self._device)
         z_batch = Z[batch]
-        q_rep = q_points_t.repeat(batch_size, 1)
         if z_dim:
             z_rep_np = np.repeat(z_batch, q, axis=0)
             z_rep = torch.as_tensor(z_rep_np, dtype=self._torch_dtype, device=self._device)
-            q_inputs = torch.cat([q_rep, z_rep], dim=1)
+            q_inputs = torch.cat([q_points_t, z_rep], dim=1)
         else:
-            q_inputs = q_rep
+            q_inputs = q_points_t
         q_vals = self._model_intensity(q_inputs).reshape(batch_size, q)
-        integral = (q_vals * q_weights_t.reshape(1, -1)).sum(dim=1).mean()
+        integral = (q_vals * q_weights_t).sum(dim=1).mean()
         return loss + integral
 
-    def _validation_nll(self, indices, point_arrays, Z, q_points_t, q_weights_t, torch, F) -> float:
+    def _validation_nll(self, indices, point_arrays, Z, quadrature_state, rng, torch, F, fixed_quadrature=None) -> float:
         if len(indices) == 0:
             return math.nan
         self.model.eval()
@@ -334,9 +370,92 @@ class DNNNPMLEEstimator(Estimator):
             losses = []
             for start in range(0, len(indices), int(self.config["batch_size"])):
                 batch = indices[start : start + int(self.config["batch_size"])]
-                losses.append(float(self._batch_nll(batch, point_arrays, Z, q_points_t, q_weights_t, torch, F).cpu().item()))
+                losses.append(
+                    float(
+                        self._batch_nll(
+                            batch,
+                            point_arrays,
+                            Z,
+                            quadrature_state,
+                            rng,
+                            torch,
+                            F,
+                            fixed_quadrature,
+                        )
+                        .cpu()
+                        .item()
+                    )
+                )
         self.model.train()
         return float(np.mean(losses)) if losses else math.nan
+
+    def _quadrature_state(self, data: dict[str, Any]) -> dict[str, Any]:
+        state: dict[str, Any] = {}
+        if self._uses_agnostic_manifold_learning():
+            arrays = [np.asarray(arr, dtype=np.float64) for arr in data["events"] if arr.shape[0] > 0]
+            flat = (
+                np.concatenate(arrays, axis=0)
+                if arrays
+                else np.empty((0, int(self.metadata["embedding_dim"])), dtype=np.float64)
+            )
+            counts = np.asarray(data.get("counts", []), dtype=np.float64)
+            mean_count = float(np.mean(counts)) if counts.size else float(self.config.get("expected_count", 30.0))
+            state["agnostic_points"] = flat.astype(np.float64, copy=False)
+            state["agnostic_weight_sum"] = mean_count
+        return state
+
+    def _batch_quadrature(
+        self,
+        batch_size: int,
+        quadrature_state: dict[str, Any],
+        rng: np.random.Generator,
+        fixed_quadrature: tuple[np.ndarray, np.ndarray] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if fixed_quadrature is not None:
+            points, weights = fixed_quadrature
+            points = np.asarray(points, dtype=np.float64)
+            weights = np.asarray(weights, dtype=np.float64)
+            return (
+                np.broadcast_to(
+                    points.reshape(1, points.shape[0], points.shape[1]),
+                    (batch_size, points.shape[0], points.shape[1]),
+                ),
+                np.broadcast_to(weights.reshape(1, weights.shape[0]), (batch_size, weights.shape[0])),
+            )
+
+        q = max(int(self.config["integration_points"]), 1)
+        if self._uses_agnostic_manifold_learning():
+            flat = np.asarray(quadrature_state.get("agnostic_points"), dtype=np.float64)
+            if flat.size:
+                replace = flat.shape[0] < batch_size * q
+                choice = rng.choice(flat.shape[0], size=batch_size * q, replace=replace)
+                q_model = flat[choice].reshape(batch_size, q, flat.shape[1])
+            else:
+                dim = int(self.metadata["embedding_dim"])
+                q_model = rng.normal(size=(batch_size, q, dim)).astype(np.float64)
+                q_model /= np.maximum(np.linalg.norm(q_model, axis=2, keepdims=True), 1e-12)
+            weight_sum = float(quadrature_state.get("agnostic_weight_sum", self.config.get("expected_count", 30.0)))
+            weights = np.full((batch_size, q), weight_sum / q, dtype=np.float64)
+            return q_model.astype(np.float64, copy=False), weights
+
+        if self.metadata["support_type"] == "euclidean":
+            dim = int(self.metadata["event_dim"])
+            raw = rng.uniform(0.0, 1.0, size=(batch_size * q, dim)).astype(np.float64)
+            q_model = points_for_model(raw, self.metadata, self.config.get("manifold_input", "intrinsic"))
+            weights = np.full((batch_size, q), float(self.metadata.get("volume", 1.0)) / q, dtype=np.float64)
+            return q_model.reshape(batch_size, q, -1), weights
+
+        manifold_type = self.metadata.get("manifold_type")
+        if manifold_type == "circle":
+            coords, embedded = sample_uniform_circle(batch_size * q, rng)
+        elif manifold_type == "sphere":
+            coords, embedded = sample_uniform_sphere(batch_size * q, rng)
+        else:
+            raise ValueError(f"Unsupported manifold type: {manifold_type}")
+        raw = embedded if self.config.get("manifold_input") == "embedded" else coords
+        q_model = points_for_model(raw, self.metadata, self.config.get("manifold_input", "intrinsic"))
+        weights = np.full((batch_size, q), float(self.metadata.get("volume", 1.0)) / q, dtype=np.float64)
+        return q_model.reshape(batch_size, q, -1).astype(np.float64, copy=False), weights
 
     def _event_point_arrays(self, data: dict[str, Any]) -> list[np.ndarray]:
         if self._uses_agnostic_manifold_learning():

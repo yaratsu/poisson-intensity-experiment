@@ -61,9 +61,17 @@ def _tag_number(value: Any) -> str:
 
 
 def dnn_architecture_label(config: dict[str, Any]) -> str:
+    def with_quadrature(label: str) -> str:
+        mode = str(config.get("quadrature_mode", "stochastic")).lower()
+        if mode == "stochastic":
+            return f"{label}_stochq"
+        if mode == "fixed":
+            return f"{label}_fixedq"
+        return label
+
     architecture = str(config.get("architecture", "theory")).lower()
     if architecture in {"theory", "adaptive", "auto"}:
-        return (
+        return with_quadrature(
             f"{architecture}"
             f"_ref{_tag_number(config.get('architecture_reference_n', 1000))}"
             f"_ds{_tag_number(config.get('depth_scale', 1.0))}"
@@ -71,7 +79,7 @@ def dnn_architecture_label(config: dict[str, Any]) -> str:
         )
     widths = config.get("hidden_layers") or []
     width_tag = "x".join(str(int(width)) for width in widths) if widths else "custom"
-    return f"{architecture}_{width_tag}"
+    return with_quadrature(f"{architecture}_{width_tag}")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -103,6 +111,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--integration-points", type=int, default=None)
+    parser.add_argument("--quadrature-mode", choices=["stochastic", "fixed"], default=None)
     parser.add_argument("--eval-z", type=int, default=None)
     parser.add_argument("--eval-points", type=int, default=None)
     parser.add_argument("--kernel-chunk-size", type=int, default=None)
@@ -199,6 +208,7 @@ def assemble_config(args: argparse.Namespace) -> dict[str, Any]:
             "max_epochs": args.max_epochs,
             "batch_size": args.batch_size,
             "integration_points": args.integration_points,
+            "quadrature_mode": args.quadrature_mode,
         },
     }
     kernel_cli = {
@@ -393,6 +403,8 @@ def main(argv: list[str] | None = None) -> None:
         "dnn_depth": estimator.config.get("architecture_depth_used") if is_dnn else None,
         "dnn_width": estimator.config.get("architecture_width_used") if is_dnn else None,
         "dnn_architecture_rate_exponent": estimator.config.get("architecture_rate_exponent_used") if is_dnn else None,
+        "dnn_quadrature_mode": estimator.config.get("quadrature_mode") if is_dnn else None,
+        "dnn_integration_points": estimator.config.get("integration_points") if is_dnn else None,
         "manifold_learning": cfg["dnn"].get("manifold_learning") if is_dnn and is_manifold else None,
         "manifold_input": cfg["dnn"].get("manifold_input") if is_dnn and is_manifold else None,
         "expected_count": expected_count,

@@ -72,7 +72,9 @@ depth = ceil(3 * log(n) / log(1000)),
 width = round_up_to_multiple(64 * (n / 1000)^((1 - gamma) / 2), 8).
 ```
 
-There is no min/max depth or width clipping in the default theory architecture. The default method label includes the architecture tag, for example `dnn_npmle_softplus_theory_ref1000_ds3_ws64`. The resolved architecture is saved in each metrics JSON/CSV as `dnn_hidden_layers`, `dnn_depth`, `dnn_width`, and `dnn_architecture_rate_exponent`. Use `--dnn-architecture fixed --hidden-layers "128 128 128"` to reproduce a fixed architecture.
+There is no min/max depth or width clipping in the default theory architecture. The default method label includes the architecture and quadrature tags, for example `dnn_npmle_softplus_theory_ref1000_ds3_ws64_stochq`. The resolved architecture is saved in each metrics JSON/CSV as `dnn_hidden_layers`, `dnn_depth`, `dnn_width`, and `dnn_architecture_rate_exponent`. Use `--dnn-architecture fixed --hidden-layers "128 128 128"` to reproduce a fixed architecture.
+
+The DNN likelihood uses stochastic quadrature by default: integration points are freshly resampled for each mini-batch of replicated Poisson processes, and validation uses deterministic epoch-specific resampling. This avoids overfitting to one fixed integration grid as `n` grows. Use `--quadrature-mode fixed` for the older fixed-grid ablation. The number of integration points per replicate in each mini-batch is controlled by `--integration-points`.
 
 ## GPU Runs on Kaggle
 
@@ -258,7 +260,7 @@ This creates:
 
 ## Methods
 
-- `dnn_npmle`: the proposed deep-learning NPMLE trained with the Poisson process negative log-likelihood. For manifold scenarios, the default training mode is `manifold_learning: agnostic`: the network uses embedded event coordinates and an empirical support quadrature built only from observed events. It does not use true intrinsic coordinates, geodesic distances, manifold volume, or circle/sphere quadrature during training. True manifold quadrature is used only for simulation, oracle evaluation, and plotting. Set `--manifold-learning oracle` for diagnostic ablations; this defaults to intrinsic manifold coordinates unless `--manifold-input embedded` is supplied.
+- `dnn_npmle`: the proposed deep-learning NPMLE trained with the Poisson process negative log-likelihood and mini-batch stochastic quadrature. For manifold scenarios, the default training mode is `manifold_learning: agnostic`: the network uses embedded event coordinates and an empirical support quadrature resampled from observed events. It does not use true intrinsic coordinates, geodesic distances, manifold volume, or circle/sphere quadrature during training. True manifold quadrature is used only for simulation, oracle evaluation, plotting, and `--manifold-learning oracle` diagnostic ablations; oracle mode defaults to intrinsic manifold coordinates unless `--manifold-input embedded` is supplied.
 - `kernel_covariate`: Klutchnikoff-Massiot-style conditional product-kernel estimator with denominator trimming.
 - `kernel_euclidean`: Euclidean pooled spatial product-kernel estimator that ignores covariates.
 - `kernel_manifold`: Ward et al.-style geodesic kernel estimator with mesh/quadrature integration. This is an oracle/diagnostic baseline because it uses manifold geometry; default local scripts skip it unless `RUN_ORACLE_MANIFOLD_KERNEL=1` is set.

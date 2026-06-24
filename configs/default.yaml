@@ -41,6 +41,9 @@ dnn:
   patience: 15
   validation_fraction: 0.2
   integration_points: 128
+  # stochastic: resample integration points independently for each mini-batch.
+  # fixed: reuse one quadrature grid throughout training, kept for ablations.
+  quadrature_mode: stochastic
   grad_clip: 5.0
   eps: 1.0e-8
   dtype: float32
