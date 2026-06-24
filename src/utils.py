@@ -4,6 +4,7 @@ import json
 import math
 import random
 import time
+import csv
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Mapping
@@ -13,6 +14,7 @@ import numpy as np
 
 N_VALUES = [100, 316, 1000, 3162, 10000]
 Z_DIMS = [0, 1, 5, 10]
+CSV_EXCLUDE_KEYS = {"config", "kernel_profile"}
 
 
 def ensure_dir(path: str | Path) -> Path:
@@ -21,9 +23,11 @@ def ensure_dir(path: str | Path) -> Path:
     return path
 
 
-def set_random_seed(seed: int) -> None:
+def set_random_seed(seed: int, seed_torch: bool = True) -> None:
     random.seed(seed)
     np.random.seed(seed)
+    if not seed_torch:
+        return
     try:
         import torch
 
@@ -52,6 +56,72 @@ def save_json(obj: Mapping[str, Any], path: str | Path) -> None:
 def load_json(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def csv_cell(value: Any) -> Any:
+    value = to_jsonable(value)
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True)
+    return value
+
+
+def write_dicts_csv(rows: list[Mapping[str, Any]], path: str | Path) -> None:
+    path = Path(path)
+    ensure_dir(path.parent)
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    fieldnames: list[str] = []
+    for row in rows:
+        for key in row.keys():
+            key = str(key)
+            if key in CSV_EXCLUDE_KEYS:
+                continue
+            if key not in fieldnames:
+                fieldnames.append(key)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: csv_cell(row.get(key)) for key in fieldnames})
+
+
+def update_dicts_csv_dedup(path: str | Path, row: Mapping[str, Any], key_fields: list[str]) -> None:
+    path = Path(path)
+    rows: list[dict[str, Any]] = []
+    if path.exists() and path.stat().st_size > 0:
+        with path.open("r", encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+    row_csv = {str(key): csv_cell(value) for key, value in row.items() if str(key) not in CSV_EXCLUDE_KEYS}
+    new_key = tuple(str(row_csv.get(key, "")) for key in key_fields)
+    kept = []
+    for existing in rows:
+        existing_key = tuple(str(existing.get(key, "")) for key in key_fields)
+        if existing_key != new_key:
+            kept.append(existing)
+    kept.append(row_csv)
+    write_dicts_csv(kept, path)
+
+
+def collect_metric_json_csv(results_dir: str | Path) -> None:
+    results_dir = Path(results_dir)
+    metrics_dir = results_dir / "metrics"
+    rows: list[dict[str, Any]] = []
+    if not metrics_dir.exists():
+        return
+    for path in metrics_dir.glob("*.json"):
+        if path.name.startswith("history_"):
+            continue
+        try:
+            row = load_json(path)
+        except Exception:
+            continue
+        if "squared_hellinger" in row:
+            rows.append(row)
+    if rows:
+        write_dicts_csv(rows, metrics_dir / "all_metrics.csv")
 
 
 def to_jsonable(obj: Any) -> Any:

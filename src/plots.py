@@ -6,7 +6,8 @@ from typing import Any
 import numpy as np
 
 from .geometry import circle_to_embedding, sphere_to_embedding
-from .utils import ensure_dir
+from .intensities import make_true_intensity
+from .utils import collect_metric_json_csv, ensure_dir, load_json, save_json
 
 
 def _mpl():
@@ -43,6 +44,120 @@ def plot_intensity(
     if support == "sphere":
         return _plot_sphere(true_intensity, estimator, output_dir, z_dim, covariate_value)
     raise ValueError(f"Unknown support: {support}")
+
+
+def best_intensity_plot_dir(metadata: dict[str, Any], results_dir: str | Path = "results") -> Path:
+    return (
+        Path(results_dir)
+        / "plots"
+        / "intensity"
+        / str(metadata["scenario"])
+        / str(metadata["support"])
+        / f"zdim_{int(metadata['z_dim'])}"
+        / f"n_{int(metadata['n'])}"
+        / str(metadata["method"])
+    )
+
+
+def plot_best_repeat_intensity(
+    metadata: dict[str, Any],
+    results_dir: str | Path = "results",
+    current_estimator: Any | None = None,
+    current_repetition: int | None = None,
+    true_intensity: Any | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Plot the intensity only for the currently selected best repetition."""
+    output_dir = best_intensity_plot_dir(metadata, results_dir)
+    marker_path = output_dir / "best_repeat_plot_metadata.json"
+    best_repetition = int(metadata.get("best_repetition", -1))
+    best_model_path = str(metadata.get("best_model_path") or "")
+    if best_repetition < 0:
+        return {}
+    if not force and _best_plot_is_current(marker_path, metadata):
+        existing = load_json(marker_path)
+        return {
+            "best_intensity_plot_dir": str(output_dir),
+            "best_intensity_plot_repetition": best_repetition,
+            "best_intensity_plot_metadata": str(marker_path),
+            "intensity_plot_created_this_run": False,
+            "best_intensity_plot_files": existing.get("plot_files", []),
+        }
+
+    if true_intensity is None:
+        true_intensity = _true_intensity_from_metadata(metadata)
+    estimator = current_estimator
+    if current_repetition is None or int(current_repetition) != best_repetition:
+        estimator = _load_estimator_for_plot(best_model_path)
+    if estimator is None:
+        return {}
+
+    paths = plot_intensity(true_intensity, estimator, output_dir, z_dim=int(metadata["z_dim"]))
+    payload = {
+        "scenario": metadata.get("scenario"),
+        "support": metadata.get("support"),
+        "z_dim": metadata.get("z_dim"),
+        "n": metadata.get("n"),
+        "method": metadata.get("method"),
+        "setting_hash": metadata.get("setting_hash"),
+        "best_repetition": best_repetition,
+        "best_squared_hellinger": metadata.get("best_squared_hellinger"),
+        "best_model_path": best_model_path,
+        "plot_files": [str(path) for path in paths],
+    }
+    save_json(payload, marker_path)
+    return {
+        "best_intensity_plot_dir": str(output_dir),
+        "best_intensity_plot_repetition": best_repetition,
+        "best_intensity_plot_metadata": str(marker_path),
+        "best_intensity_plot_files": payload["plot_files"],
+        "intensity_plot_created_this_run": True,
+    }
+
+
+def _best_plot_is_current(marker_path: Path, metadata: dict[str, Any]) -> bool:
+    if not marker_path.exists():
+        return False
+    try:
+        existing = load_json(marker_path)
+    except Exception:
+        return False
+    if int(existing.get("best_repetition", -999)) != int(metadata.get("best_repetition", -1)):
+        return False
+    if str(existing.get("best_model_path") or "") != str(metadata.get("best_model_path") or ""):
+        return False
+    return all(Path(path).exists() for path in existing.get("plot_files", []))
+
+
+def _true_intensity_from_metadata(metadata: dict[str, Any]) -> Any:
+    cfg = metadata.get("config") or {}
+    exp = cfg.get("experiment") or {}
+    true_intensity = make_true_intensity(
+        scenario=str(metadata["scenario"]),
+        support=str(metadata["support"]),
+        z_dim=int(metadata["z_dim"]),
+        expected_count=float(exp.get("expected_count", 30.0)),
+        epsilon=float(exp.get("epsilon", 1e-4)),
+        beta=float(exp.get("beta", 2.0)),
+        alpha=exp.get("alpha"),
+    )
+    true_intensity.metadata.update({"scenario": str(metadata["scenario"])})
+    return true_intensity
+
+
+def _load_estimator_for_plot(path: str) -> Any | None:
+    if not path:
+        return None
+    model_path = Path(path)
+    if not model_path.exists():
+        return None
+    if model_path.suffix == ".pt":
+        from .methods.dnn_npmle import DNNNPMLEEstimator
+
+        return DNNNPMLEEstimator.load(model_path)
+    from .methods.base import Estimator
+
+    return Estimator.load(model_path)
 
 
 def _plot_euclidean_1d(true_intensity, estimator, output_dir, z_dim, covariate_value, grid_size):
@@ -184,6 +299,38 @@ def create_summary_tables(results_dir: str | Path = "results") -> None:
     q = df.groupby(group_cols, dropna=False)["squared_hellinger"].quantile([0.25, 0.75]).unstack().reset_index()
     q = q.rename(columns={0.25: "q25", 0.75: "q75"})
     summary = summary.merge(q, on=group_cols, how="left")
+    requested_cols = [
+        "bandwidth_selection",
+        "bandwidth_theory_mode",
+        "bandwidth_cv_folds",
+        "kernel_cv_max_replicates",
+        "kernel_cv_max_events_per_replicate",
+        "validation_z_chunk_size",
+        "validation_quadrature_method",
+        "boundary_correction",
+        "bandwidth_x",
+        "bandwidth_z",
+        "bandwidth_manifold",
+        "bandwidth_cv_score",
+        "model_saved",
+        "best_repeat",
+        "best_model_path",
+        "save_model_policy",
+    ]
+    present = [col for col in requested_cols if col in df.columns]
+    if present:
+        def first_non_null(series):
+            non_null = series.dropna()
+            return non_null.iloc[0] if len(non_null) else pd.NA
+
+        agg_map = {}
+        for col in present:
+            if col in {"bandwidth_x", "bandwidth_z", "bandwidth_manifold", "bandwidth_cv_score"}:
+                agg_map[col] = "mean"
+            else:
+                agg_map[col] = first_non_null
+        extra = df.groupby(group_cols, dropna=False).agg(agg_map).reset_index()
+        summary = summary.merge(extra, on=group_cols, how="left")
     summary.to_csv(results_dir / "summary_metrics.csv", index=False)
     summary.to_markdown(results_dir / "summary_table.md", index=False)
     with (results_dir / "summary_table.tex").open("w", encoding="utf-8") as f:
@@ -191,20 +338,7 @@ def create_summary_tables(results_dir: str | Path = "results") -> None:
 
 
 def collect_metric_json(results_dir: str | Path = "results") -> None:
-    import pandas as pd
-
-    results_dir = Path(results_dir)
-    rows = []
-    for path in (results_dir / "metrics").glob("*.json"):
-        if path.name.startswith("history_"):
-            continue
-        try:
-            rows.append(pd.read_json(path, typ="series").to_dict())
-        except Exception:
-            continue
-    if rows:
-        ensure_dir(results_dir / "metrics")
-        pd.DataFrame(rows).to_csv(results_dir / "metrics" / "all_metrics.csv", index=False)
+    collect_metric_json_csv(results_dir)
 
 
 def create_boxplots(results_dir: str | Path = "results") -> None:

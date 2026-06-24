@@ -43,6 +43,9 @@ DNN and intensity options:
   --device DEVICE              cuda, cpu, or auto.
   --manifold-learning MODE     agnostic or oracle.
   --manifold-input MODE        intrinsic or embedded.
+  --save-model-policy POLICY   best_repeat, all, or none.
+  --keep-all-models            Keep temporary models for all repetitions.
+  --no-plots                   Skip best-repeat intensity plots.
   --expected-count M           Expected events per replicate.
   --epsilon EPS                Near-zero/manifold epsilon.
   --alpha A                    Alpha parameter for theory-rate setting.
@@ -99,6 +102,9 @@ ALPHA="${ALPHA:-}"
 BETA="${BETA:-}"
 MANIFOLD_LEARNING="${MANIFOLD_LEARNING:-agnostic}"
 MANIFOLD_INPUT="${MANIFOLD_INPUT:-}"
+SAVE_MODEL_POLICY="${SAVE_MODEL_POLICY:-best_repeat}"
+KEEP_ALL_MODELS="${KEEP_ALL_MODELS:-0}"
+NO_PLOTS="${NO_PLOTS:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -126,6 +132,9 @@ while [[ $# -gt 0 ]]; do
     --device) DEVICE="$2"; shift 2 ;;
     --manifold-learning) MANIFOLD_LEARNING="$2"; shift 2 ;;
     --manifold-input) MANIFOLD_INPUT="$2"; shift 2 ;;
+    --save-model-policy) SAVE_MODEL_POLICY="$2"; shift 2 ;;
+    --keep-all-models) KEEP_ALL_MODELS=1; shift ;;
+    --no-plots) NO_PLOTS=1; shift ;;
     --expected-count) EXPECTED_COUNT="$2"; shift 2 ;;
     --epsilon) EPSILON="$2"; shift 2 ;;
     --alpha) ALPHA="$2"; shift 2 ;;
@@ -134,6 +143,15 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+REPETITION_COUNT=0
+for _rep in $REPETITIONS; do
+  REPETITION_COUNT=$((REPETITION_COUNT + 1))
+done
+if [[ "$REPETITION_COUNT" -lt 1 ]]; then
+  echo "At least one repetition is required." >&2
+  exit 2
+fi
 
 run_case() {
   local scenario="$1"
@@ -157,6 +175,13 @@ run_case() {
     dnn_args+=(--hidden-layers "$HIDDEN_LAYERS")
   fi
   local intensity_args=(--expected-count "$EXPECTED_COUNT")
+  local model_save_args=(--save-model-policy "$SAVE_MODEL_POLICY" --plot-after-repetitions "$REPETITION_COUNT")
+  if [[ "$KEEP_ALL_MODELS" == "1" ]]; then
+    model_save_args+=(--keep-all-models)
+  fi
+  if [[ "$NO_PLOTS" == "1" ]]; then
+    model_save_args+=(--no-plots)
+  fi
   if [[ -n "$EPSILON" ]]; then
     intensity_args+=(--epsilon "$EPSILON")
   fi
@@ -185,6 +210,7 @@ run_case() {
       --max-epochs "$EPOCHS" \
       "${dnn_args[@]}" \
       "${intensity_args[@]}" \
+      "${model_save_args[@]}" \
       "${manifold_args[@]}"
   else
     bash scripts/run_experiment.sh \
@@ -198,7 +224,8 @@ run_case() {
       --device "$DEVICE" \
       --max-epochs "$EPOCHS" \
       "${dnn_args[@]}" \
-      "${intensity_args[@]}"
+      "${intensity_args[@]}" \
+      "${model_save_args[@]}"
   fi
 }
 

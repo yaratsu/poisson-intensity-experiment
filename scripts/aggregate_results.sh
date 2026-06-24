@@ -19,4 +19,13 @@ else
   exit 1
 fi
 
-"${PYTHON_CMD[@]}" -m src.aggregate --results-dir "${RESULTS_DIR:-results}" --boxplots
+SELECT_BEST_MODELS="${SELECT_BEST_MODELS:-1}"
+ARGS=(--results-dir "${RESULTS_DIR:-results}" --boxplots)
+if [[ "$SELECT_BEST_MODELS" == "1" ]]; then
+  ARGS+=(--select-best-models)
+fi
+if [[ "${KEEP_ALL_MODELS:-0}" == "1" ]]; then
+  ARGS+=(--keep-all-models)
+fi
+
+"${PYTHON_CMD[@]}" -m src.aggregate "${ARGS[@]}"

@@ -10,6 +10,11 @@ experiment:
   beta: 2.0
   eval_z: 64
   eval_points: 512
+  eval_chunk_size: 4096
+  cache_dir: cache
+  mesh_resolution: 64
+  save_model_policy: best_repeat
+  keep_all_models: false
   covariate_sampler: uniform
   results_dir: results
 
@@ -43,20 +48,92 @@ dnn:
   device: auto
 
 kernel_euclidean:
-  mode: joint_kernel
+  mode: spatial_only
   kernel: gaussian
   a_n: 1.0e-6
+  boundary_correction: renormalize
+  boundary_correction_eps: 1.0e-8
+  kernel_chunk_size: 4096
+  max_dense_entries: 20000000
+  gaussian_cutoff: 4.0
+  use_gaussian_cutoff: true
+  bandwidth_selection: theory_guided_5fold_cv
+  bandwidth_cv_folds: 5
+  bandwidth_theory_mode: separate_spatial_covariate
+  bandwidth_scale_x: 1.0
+  bandwidth_scale_z: 1.0
+  bandwidth_min: 0.02
+  bandwidth_max: 1.25
+  bandwidth_coarse_multipliers: [0.5, 0.75, 1.0, 1.5, 2.0]
+  bandwidth_highdim_multipliers: [0.75, 1.0, 1.5, 2.0, 3.0]
+  bandwidth_fine_multipliers: [0.8, 1.0, 1.25]
+  bandwidth_search: coarse_to_fine
+  bandwidth_grid_size: 5
+  bandwidth_fine_grid_size: 3
+  use_distance_cache: true
+  cache_dir: cache
   validation_fraction: 0.2
   validation_integration_points: 128
+  validation_quadrature_method: uniform
+  kernel_cv_max_replicates: 512
+  kernel_cv_max_events_per_replicate: 128
+  validation_z_chunk_size: 256
 
 kernel_covariate:
   mode: joint_kernel
   kernel: gaussian
   a_n: 1.0e-6
+  boundary_correction: renormalize
+  boundary_correction_eps: 1.0e-8
+  kernel_chunk_size: 4096
+  max_dense_entries: 20000000
+  gaussian_cutoff: 4.0
+  use_gaussian_cutoff: true
+  bandwidth_selection: theory_guided_5fold_cv
+  bandwidth_cv_folds: 5
+  bandwidth_theory_mode: separate_spatial_covariate
+  bandwidth_scale_x: 1.0
+  bandwidth_scale_z: 1.0
+  bandwidth_min: 0.02
+  bandwidth_max: 1.25
+  bandwidth_coarse_multipliers: [0.5, 0.75, 1.0, 1.5, 2.0]
+  bandwidth_highdim_multipliers: [0.75, 1.0, 1.5, 2.0, 3.0]
+  bandwidth_fine_multipliers: [0.8, 1.0, 1.25]
+  bandwidth_search: coarse_to_fine
+  bandwidth_grid_size: 5
+  bandwidth_fine_grid_size: 3
+  use_distance_cache: true
+  cache_dir: cache
   validation_fraction: 0.2
   validation_integration_points: 128
+  validation_quadrature_method: uniform
+  kernel_cv_max_replicates: 512
+  kernel_cv_max_events_per_replicate: 128
+  validation_z_chunk_size: 256
 
 kernel_manifold:
   a_n: 1.0e-6
+  kernel_chunk_size: 4096
+  max_dense_entries: 20000000
+  gaussian_cutoff: 4.0
+  use_gaussian_cutoff: true
+  bandwidth_selection: ward_cv
+  bandwidth_cv_folds: 5
+  bandwidth_theory_mode: ward_geodesic_grid
+  bandwidth_min: 0.03
+  bandwidth_max: 1.25
+  bandwidth_coarse_multipliers: [0.5, 0.75, 1.0, 1.5, 2.0]
+  bandwidth_fine_multipliers: [0.8, 1.0, 1.25]
+  bandwidth_search: coarse_to_fine
+  bandwidth_grid_size: 5
+  bandwidth_fine_grid_size: 3
+  use_distance_cache: true
+  cache_dir: cache
+  mesh_resolution: 64
+  correction_type: none
   validation_fraction: 0.2
   validation_integration_points: 128
+  validation_quadrature_method: uniform
+  kernel_cv_max_replicates: 512
+  kernel_cv_max_events_per_replicate: 128
+  validation_z_chunk_size: 256

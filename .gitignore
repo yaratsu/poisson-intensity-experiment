@@ -8,13 +8,18 @@ __pycache__/
 .ruff_cache/
 .DS_Store
 .mplconfig/
+cache/
 
 results/metrics/*
 results/models/*
 results/plots/*
+results/profiles/*
+results/bandwidth_cv/*
 results/summary_metrics.csv
 results/summary_table.md
 results/summary_table.tex
 !results/metrics/.gitkeep
 !results/models/.gitkeep
 !results/plots/.gitkeep
+!results/profiles/.gitkeep
+!results/bandwidth_cv/.gitkeep
