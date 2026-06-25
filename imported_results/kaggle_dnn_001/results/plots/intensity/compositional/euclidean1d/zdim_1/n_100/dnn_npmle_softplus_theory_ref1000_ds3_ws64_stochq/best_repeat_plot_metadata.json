@@ -1,0 +1,14 @@
+{
+  "best_model_path": "results/models/best/83f03d2aa95c341cc32d2c290db9551c/best_model.pt",
+  "best_repetition": 0,
+  "best_squared_hellinger": 0.39100328818475527,
+  "method": "dnn_npmle_softplus_theory_ref1000_ds3_ws64_stochq",
+  "n": 100,
+  "plot_files": [
+    "results/plots/intensity/compositional/euclidean1d/zdim_1/n_100/dnn_npmle_softplus_theory_ref1000_ds3_ws64_stochq/intensity_1d.png"
+  ],
+  "scenario": "compositional",
+  "setting_hash": "83f03d2aa95c341cc32d2c290db9551c",
+  "support": "euclidean1d",
+  "z_dim": 1
+}

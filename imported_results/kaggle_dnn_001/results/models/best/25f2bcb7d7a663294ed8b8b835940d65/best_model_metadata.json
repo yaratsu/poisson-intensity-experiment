@@ -1,0 +1,232 @@
+{
+  "all_repetition_metrics": [
+    {
+      "model_path_tmp": "results/models/tmp/25f2bcb7d7a663294ed8b8b835940d65_rep0.pt",
+      "repetition": 0,
+      "squared_hellinger": 0.27186450497533365
+    },
+    {
+      "model_path_tmp": "results/models/tmp/25f2bcb7d7a663294ed8b8b835940d65_rep1.pt",
+      "repetition": 1,
+      "squared_hellinger": 0.26213934921350224
+    },
+    {
+      "model_path_tmp": "results/models/tmp/25f2bcb7d7a663294ed8b8b835940d65_rep2.pt",
+      "repetition": 2,
+      "squared_hellinger": 0.18863258293499174
+    }
+  ],
+  "best_model_path": "results/models/best/25f2bcb7d7a663294ed8b8b835940d65/best_model.pt",
+  "best_repetition": 2,
+  "best_squared_hellinger": 0.18863258293499174,
+  "config": {
+    "dnn": {
+      "alpha": 0.0,
+      "architecture": "theory",
+      "architecture_reference_n": 1000.0,
+      "batch_size": 64,
+      "beta": 2.0,
+      "depth_scale": 3.0,
+      "device": "cuda",
+      "dtype": "float32",
+      "eps": 1e-08,
+      "expected_count": 30.0,
+      "grad_clip": 5.0,
+      "hidden_layers": [
+        128,
+        128,
+        128
+      ],
+      "integration_points": 128,
+      "learning_rate": 0.001,
+      "manifold_input": "embedded",
+      "manifold_learning": "agnostic",
+      "max_epochs": 300,
+      "output_activation": "relu",
+      "patience": 15,
+      "quadrature_mode": "stochastic",
+      "scenario": "compositional",
+      "seed": 1128865787,
+      "support": "euclidean1d",
+      "validation_fraction": 0.2,
+      "weight_decay": 0.0001,
+      "width_multiple": 8,
+      "width_scale": 64.0
+    },
+    "experiment": {
+      "beta": 2.0,
+      "cache_dir": "cache",
+      "covariate_sampler": "uniform",
+      "epsilon": 0.0001,
+      "eval_chunk_size": 4096,
+      "eval_points": 512,
+      "eval_z": 64,
+      "expected_count": 30.0,
+      "keep_all_models": false,
+      "mesh_resolution": 64,
+      "method": "dnn_npmle",
+      "n": 316,
+      "plot_after_repetitions": 3,
+      "repetition": 2,
+      "results_dir": "results",
+      "save_model_policy": "best_repeat",
+      "scenario": "compositional",
+      "seed": null,
+      "support": "euclidean1d",
+      "z_dim": 5
+    },
+    "kernel_covariate": {
+      "a_n": 1e-06,
+      "bandwidth_coarse_multipliers": [
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "bandwidth_cv_folds": 5,
+      "bandwidth_fine_grid_size": 3,
+      "bandwidth_fine_multipliers": [
+        0.8,
+        1.0,
+        1.25
+      ],
+      "bandwidth_grid_size": 5,
+      "bandwidth_highdim_multipliers": [
+        0.75,
+        1.0,
+        1.5,
+        2.0,
+        3.0
+      ],
+      "bandwidth_max": 1.25,
+      "bandwidth_min": 0.02,
+      "bandwidth_scale_x": 1.0,
+      "bandwidth_scale_z": 1.0,
+      "bandwidth_search": "coarse_to_fine",
+      "bandwidth_selection": "theory_guided_5fold_cv",
+      "bandwidth_theory_mode": "separate_spatial_covariate",
+      "boundary_correction": "renormalize",
+      "boundary_correction_eps": 1e-08,
+      "cache_dir": "cache",
+      "gaussian_cutoff": 4.0,
+      "kernel": "gaussian",
+      "kernel_chunk_size": 4096,
+      "kernel_cv_max_events_per_replicate": 128,
+      "kernel_cv_max_replicates": 512,
+      "max_dense_entries": 20000000,
+      "mode": "joint_kernel",
+      "seed": 1128865787,
+      "use_distance_cache": true,
+      "use_gaussian_cutoff": true,
+      "validation_fraction": 0.2,
+      "validation_integration_points": 128,
+      "validation_quadrature_method": "uniform",
+      "validation_z_chunk_size": 256
+    },
+    "kernel_euclidean": {
+      "a_n": 1e-06,
+      "bandwidth_coarse_multipliers": [
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "bandwidth_cv_folds": 5,
+      "bandwidth_fine_grid_size": 3,
+      "bandwidth_fine_multipliers": [
+        0.8,
+        1.0,
+        1.25
+      ],
+      "bandwidth_grid_size": 5,
+      "bandwidth_highdim_multipliers": [
+        0.75,
+        1.0,
+        1.5,
+        2.0,
+        3.0
+      ],
+      "bandwidth_max": 1.25,
+      "bandwidth_min": 0.02,
+      "bandwidth_scale_x": 1.0,
+      "bandwidth_scale_z": 1.0,
+      "bandwidth_search": "coarse_to_fine",
+      "bandwidth_selection": "theory_guided_5fold_cv",
+      "bandwidth_theory_mode": "separate_spatial_covariate",
+      "boundary_correction": "renormalize",
+      "boundary_correction_eps": 1e-08,
+      "cache_dir": "cache",
+      "gaussian_cutoff": 4.0,
+      "kernel": "gaussian",
+      "kernel_chunk_size": 4096,
+      "kernel_cv_max_events_per_replicate": 128,
+      "kernel_cv_max_replicates": 512,
+      "max_dense_entries": 20000000,
+      "mode": "spatial_only",
+      "seed": 1128865787,
+      "use_distance_cache": true,
+      "use_gaussian_cutoff": true,
+      "validation_fraction": 0.2,
+      "validation_integration_points": 128,
+      "validation_quadrature_method": "uniform",
+      "validation_z_chunk_size": 256
+    },
+    "kernel_manifold": {
+      "a_n": 1e-06,
+      "bandwidth_coarse_multipliers": [
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "bandwidth_cv_folds": 5,
+      "bandwidth_fine_grid_size": 3,
+      "bandwidth_fine_multipliers": [
+        0.8,
+        1.0,
+        1.25
+      ],
+      "bandwidth_grid_size": 5,
+      "bandwidth_max": 1.25,
+      "bandwidth_min": 0.03,
+      "bandwidth_search": "coarse_to_fine",
+      "bandwidth_selection": "ward_cv",
+      "bandwidth_theory_mode": "ward_geodesic_grid",
+      "cache_dir": "cache",
+      "correction_type": "none",
+      "gaussian_cutoff": 4.0,
+      "kernel_chunk_size": 4096,
+      "kernel_cv_max_events_per_replicate": 128,
+      "kernel_cv_max_replicates": 512,
+      "max_dense_entries": 20000000,
+      "mesh_resolution": 64,
+      "seed": 1128865787,
+      "use_distance_cache": true,
+      "use_gaussian_cutoff": true,
+      "validation_fraction": 0.2,
+      "validation_integration_points": 128,
+      "validation_quadrature_method": "uniform",
+      "validation_z_chunk_size": 256
+    }
+  },
+  "method": "dnn_npmle_relu_theory_ref1000_ds3_ws64_stochq",
+  "metric_paths": [
+    "results/metrics/compositional_euclidean1d_z5_n316_dnn_npmle_relu_theory_ref1000_ds3_ws64_stochq_rep2_seed1128865787.json",
+    "results/metrics/compositional_euclidean1d_z5_n316_dnn_npmle_relu_theory_ref1000_ds3_ws64_stochq_rep1_seed1128865786.json",
+    "results/metrics/compositional_euclidean1d_z5_n316_dnn_npmle_relu_theory_ref1000_ds3_ws64_stochq_rep0_seed1128865785.json"
+  ],
+  "n": 316,
+  "output_activation": "relu",
+  "scenario": "compositional",
+  "selected_bandwidths": {
+    "h_m": null,
+    "h_x": null,
+    "h_z": null
+  },
+  "setting_hash": "25f2bcb7d7a663294ed8b8b835940d65",
+  "support": "euclidean1d",
+  "z_dim": 5
+}

@@ -160,6 +160,248 @@ def _load_estimator_for_plot(path: str) -> Any | None:
     return Estimator.load(model_path)
 
 
+def create_intensity_comparison_plots(
+    results_dir: str | Path = "results",
+    covariate_value: float = 0.5,
+    grid_size: int = 120,
+) -> list[Path]:
+    """Plot true intensity and all best-repeat method estimates in shared figures."""
+    results_dir = Path(results_dir)
+    metadata_paths = sorted((results_dir / "models" / "best").glob("*/best_model_metadata.json"))
+    groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for path in metadata_paths:
+        try:
+            metadata = load_json(path)
+        except Exception:
+            continue
+        if not metadata.get("best_model_path"):
+            continue
+        if not Path(str(metadata["best_model_path"])).exists():
+            continue
+        key = _comparison_group_key(metadata)
+        groups.setdefault(key, []).append(metadata)
+
+    paths: list[Path] = []
+    for _, members in sorted(groups.items(), key=lambda item: tuple(str(part) for part in item[0])):
+        members = _dedupe_comparison_members(members)
+        if len(members) < 1:
+            continue
+        true_intensity = _true_intensity_from_metadata(members[0])
+        support = str(members[0]["support"])
+        output_dir = ensure_dir(
+            results_dir
+            / "plots"
+            / "intensity_comparison"
+            / str(members[0]["scenario"])
+            / support
+            / f"zdim_{int(members[0]['z_dim'])}"
+            / f"n_{int(members[0]['n'])}"
+        )
+        loaded = []
+        for metadata in members:
+            estimator = _load_estimator_for_plot(str(metadata.get("best_model_path") or ""))
+            if estimator is not None:
+                loaded.append((metadata, estimator))
+        if not loaded:
+            continue
+        if support == "euclidean1d":
+            paths.extend(_plot_comparison_1d(true_intensity, loaded, output_dir, covariate_value, grid_size))
+        elif support == "euclidean2d":
+            paths.extend(_plot_comparison_2d(true_intensity, loaded, output_dir, covariate_value, grid_size))
+        elif support == "circle":
+            paths.extend(_plot_comparison_circle(true_intensity, loaded, output_dir, covariate_value, grid_size))
+        elif support == "sphere":
+            paths.extend(_plot_comparison_sphere(true_intensity, loaded, output_dir, covariate_value))
+        save_json(
+            {
+                "scenario": members[0].get("scenario"),
+                "support": support,
+                "z_dim": members[0].get("z_dim"),
+                "n": members[0].get("n"),
+                "covariate_value": covariate_value,
+                "methods": [_comparison_label(metadata) for metadata, _ in loaded],
+                "best_repetitions": {metadata.get("method"): metadata.get("best_repetition") for metadata, _ in loaded},
+                "plot_files": [str(path) for path in paths if output_dir in path.parents],
+            },
+            output_dir / "comparison_plot_metadata.json",
+        )
+    return paths
+
+
+def _comparison_group_key(metadata: dict[str, Any]) -> tuple[Any, ...]:
+    cfg = metadata.get("config") or {}
+    exp = cfg.get("experiment") or {}
+    return (
+        metadata.get("scenario"),
+        metadata.get("support"),
+        int(metadata.get("z_dim", -1)),
+        int(metadata.get("n", -1)),
+        exp.get("expected_count", 30.0),
+        exp.get("epsilon"),
+        exp.get("alpha"),
+        exp.get("beta"),
+        exp.get("covariate_sampler", "uniform"),
+    )
+
+
+def _dedupe_comparison_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_method: dict[str, dict[str, Any]] = {}
+    for metadata in sorted(members, key=lambda item: float(item.get("best_squared_hellinger", np.inf))):
+        by_method.setdefault(str(metadata.get("method")), metadata)
+    return sorted(by_method.values(), key=_method_sort_key)
+
+
+def _method_sort_key(metadata: dict[str, Any]) -> tuple[int, str]:
+    method = str(metadata.get("method", ""))
+    lower = method.lower()
+    if "softplus" in lower:
+        return (0, lower)
+    if "relu" in lower:
+        return (1, lower)
+    if "covariate" in lower:
+        return (2, lower)
+    if "euclidean" in lower:
+        return (3, lower)
+    if "manifold" in lower:
+        return (4, lower)
+    return (5, lower)
+
+
+def _comparison_label(metadata: dict[str, Any]) -> str:
+    method = str(metadata.get("method", "method"))
+    h2 = metadata.get("best_squared_hellinger")
+    rep = metadata.get("best_repetition")
+    if h2 is None:
+        return method
+    return f"{method} (rep={rep}, H2={float(h2):.3g})"
+
+
+def _plot_comparison_1d(true_intensity, loaded, output_dir, covariate_value, grid_size):
+    plt = _mpl()
+    z_dim = int(loaded[0][0]["z_dim"])
+    x = np.linspace(0.0, 1.0, grid_size).reshape(-1, 1)
+    z = fixed_covariate(z_dim, covariate_value)
+    true_vals = true_intensity.evaluate(x, z)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(x[:, 0], true_vals, label="True", linewidth=2.6, color="black")
+    for metadata, estimator in loaded:
+        ax.plot(x[:, 0], estimator.predict(x, z), linewidth=1.8, label=_comparison_label(metadata))
+    ax.set_xlabel("x")
+    ax.set_ylabel("Intensity")
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    paths = [Path(output_dir) / "intensity_comparison.png", Path(output_dir) / "intensity_comparison.pdf"]
+    for path in paths:
+        fig.savefig(path, dpi=180 if path.suffix == ".png" else None)
+    plt.close(fig)
+    return paths
+
+
+def _plot_comparison_circle(true_intensity, loaded, output_dir, covariate_value, grid_size):
+    plt = _mpl()
+    z_dim = int(loaded[0][0]["z_dim"])
+    theta = np.linspace(0.0, 2.0 * np.pi, grid_size, endpoint=False).reshape(-1, 1)
+    z = fixed_covariate(z_dim, covariate_value)
+    true_vals = true_intensity.evaluate(theta, z)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(theta[:, 0], true_vals, label="True", linewidth=2.6, color="black")
+    for metadata, estimator in loaded:
+        ax.plot(theta[:, 0], estimator.predict(theta, z), linewidth=1.8, label=_comparison_label(metadata))
+    ax.set_xlabel("theta")
+    ax.set_ylabel("Intensity")
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    paths = [Path(output_dir) / "intensity_comparison.png", Path(output_dir) / "intensity_comparison.pdf"]
+    for path in paths:
+        fig.savefig(path, dpi=180 if path.suffix == ".png" else None)
+    plt.close(fig)
+    return paths
+
+
+def _plot_comparison_2d(true_intensity, loaded, output_dir, covariate_value, grid_size):
+    m = min(int(grid_size), 90)
+    xs = np.linspace(0.0, 1.0, m)
+    ys = np.linspace(0.0, 1.0, m)
+    xv, yv = np.meshgrid(xs, ys, indexing="xy")
+    points = np.column_stack([xv.ravel(), yv.ravel()])
+    return _plot_heatmap_comparison(
+        true_intensity,
+        loaded,
+        output_dir,
+        fixed_covariate(int(loaded[0][0]["z_dim"]), covariate_value),
+        points,
+        (m, m),
+        extent=[0.0, 1.0, 0.0, 1.0],
+        x_label="x1",
+        y_label="x2",
+        aspect="equal",
+    )
+
+
+def _plot_comparison_sphere(true_intensity, loaded, output_dir, covariate_value):
+    theta = np.linspace(0.0, np.pi, 48)
+    phi = np.linspace(0.0, 2.0 * np.pi, 96, endpoint=False)
+    th, ph = np.meshgrid(theta, phi, indexing="ij")
+    points = np.column_stack([th.ravel(), ph.ravel()])
+    return _plot_heatmap_comparison(
+        true_intensity,
+        loaded,
+        output_dir,
+        fixed_covariate(int(loaded[0][0]["z_dim"]), covariate_value),
+        points,
+        th.shape,
+        extent=[0.0, 2.0 * np.pi, 0.0, np.pi],
+        x_label="phi",
+        y_label="theta",
+        aspect="auto",
+    )
+
+
+def _plot_heatmap_comparison(true_intensity, loaded, output_dir, z, points, shape, extent, x_label, y_label, aspect):
+    plt = _mpl()
+    true_vals = true_intensity.evaluate(points, z).reshape(shape)
+    panels = [("True", true_vals)]
+    errors = []
+    for metadata, estimator in loaded:
+        pred_vals = estimator.predict(points, z).reshape(shape)
+        label = _comparison_label(metadata)
+        panels.append((label, pred_vals))
+        errors.append((label, np.abs(pred_vals - true_vals)))
+    paths = []
+    paths.extend(_save_panel_grid(panels, output_dir, "intensity_comparison", extent, x_label, y_label, aspect))
+    if errors:
+        paths.extend(_save_panel_grid(errors, output_dir, "absolute_error_comparison", extent, x_label, y_label, aspect))
+    return paths
+
+
+def _save_panel_grid(panels, output_dir, stem, extent, x_label, y_label, aspect):
+    plt = _mpl()
+    n_panels = len(panels)
+    n_cols = min(4, n_panels)
+    n_rows = int(np.ceil(n_panels / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.6 * n_cols, 3.3 * n_rows), squeeze=False, constrained_layout=True)
+    values = [vals for _, vals in panels]
+    vmin = min(float(np.nanmin(vals)) for vals in values)
+    vmax = max(float(np.nanmax(vals)) for vals in values)
+    image = None
+    for ax, (title, vals) in zip(axes.ravel(), panels):
+        image = ax.imshow(vals, origin="lower", extent=extent, aspect=aspect, vmin=vmin, vmax=vmax, cmap="viridis")
+        ax.set_title(title, fontsize=8)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+    for ax in axes.ravel()[len(panels) :]:
+        ax.axis("off")
+    if image is not None:
+        fig.colorbar(image, ax=axes.ravel().tolist(), fraction=0.025, pad=0.02)
+    paths = [Path(output_dir) / f"{stem}.png", Path(output_dir) / f"{stem}.pdf"]
+    for path in paths:
+        fig.savefig(path, dpi=180 if path.suffix == ".png" else None)
+    plt.close(fig)
+    return paths
+
+
 def _plot_euclidean_1d(true_intensity, estimator, output_dir, z_dim, covariate_value, grid_size):
     plt = _mpl()
     x = np.linspace(0.0, 1.0, grid_size).reshape(-1, 1)

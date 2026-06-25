@@ -242,7 +242,20 @@ Profiles are saved as `results/profiles/kernel_runtime_{scenario}_{support}_zdim
 bash scripts/aggregate_results.sh
 ```
 
-Aggregation also performs best-repeat model selection by default. Set `SELECT_BEST_MODELS=0` to skip that step, or `KEEP_ALL_MODELS=1` to retain temporary repetition models.
+Aggregation recursively scans every `metrics/` directory under `results/`, so Kaggle artifacts accidentally unpacked as `results/results/metrics/` or staged under `results/imported/.../metrics/` are included in the same comparison. Duplicate runs are deduplicated by `scenario/support/z_dim/n/repetition/method/seed`, with the top-level `results/metrics/*.json` taking priority.
+
+For Kaggle imports, the cleanest local workflow is to stage the downloaded zip outside canonical `results/`, then copy the inner result tree into place:
+
+```bash
+mkdir -p imported_results/kaggle_dnn_001
+unzip ~/Downloads/dnn_results_kaggle.zip -d imported_results/kaggle_dnn_001
+rsync -av imported_results/kaggle_dnn_001/results/ results/
+bash scripts/aggregate_results.sh
+```
+
+If you instead unzip directly into `results/` and get `results/results/...`, aggregation will still include those runs in `results/metrics/all_metrics.csv` and the generated box plots. Each box plot is grouped by `scenario/support/z_dim` and displays every available method for that setting in one figure.
+
+Aggregation also performs best-repeat model selection by default. Set `SELECT_BEST_MODELS=0` to skip that step, or `KEEP_ALL_MODELS=1` to retain temporary repetition models. It also creates aggregate intensity comparison plots by loading the selected best-repeat model for every method and drawing them in shared figures. Set `INTENSITY_COMPARISONS=0` to skip those plots.
 
 This creates:
 
@@ -251,6 +264,8 @@ This creates:
 - `results/summary_table.tex`
 - `results/plots/boxplot_*.png`
 - `results/plots/boxplot_*.pdf`
+- `results/plots/intensity_comparison/{scenario}/{support}/zdim_{z_dim}/n_{n}/intensity_comparison.png`
+- `results/plots/intensity_comparison/{scenario}/{support}/zdim_{z_dim}/n_{n}/absolute_error_comparison.png` for heatmap supports
 
 ## Scenarios
 

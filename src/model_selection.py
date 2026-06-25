@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .cache_utils import stable_key
-from .utils import ensure_dir, load_json, save_json
+from .utils import ensure_dir, iter_metric_json_paths, load_json, save_json
 
 
 SETTING_KEYS = [
@@ -54,13 +54,8 @@ def setting_hash_from_row(row: dict[str, Any]) -> str:
 
 
 def collect_metric_rows(results_dir: str | Path, glob_pattern: str = "*.json") -> list[tuple[Path, dict[str, Any]]]:
-    metrics_dir = Path(results_dir) / "metrics"
     rows = []
-    if not metrics_dir.exists():
-        return rows
-    for path in metrics_dir.glob(glob_pattern):
-        if path.name.startswith("history_"):
-            continue
+    for path in iter_metric_json_paths(results_dir, glob_pattern=glob_pattern):
         try:
             row = load_json(path)
         except Exception:
@@ -101,11 +96,14 @@ def select_best_models(
         filename = "best_model.pt" if suffix == ".pt" else "best_estimator.pkl"
         best_dir = ensure_dir(results_dir / "models" / "best" / setting_hash)
         best_model_path = best_dir / filename
-        tmp_path = Path(str(best_row.get("model_path_tmp", "")))
+        source_results_dir = best_path.parent.parent
+        tmp_path = _resolve_saved_model_path(best_row.get("model_path_tmp"), source_results_dir, results_dir)
         if tmp_path.exists():
             shutil.copy2(tmp_path, best_model_path)
-        elif best_row.get("model_path") and Path(str(best_row["model_path"])).exists():
-            shutil.copy2(Path(str(best_row["model_path"])), best_model_path)
+        else:
+            model_path = _resolve_saved_model_path(best_row.get("model_path"), source_results_dir, results_dir)
+            if model_path.exists():
+                shutil.copy2(model_path, best_model_path)
 
         all_metrics = []
         for _, row in sorted(members, key=lambda item: int(item[1].get("repetition", -1))):
@@ -148,10 +146,30 @@ def select_best_models(
             row["best_repeat"] = best_rep
             row["best_model_path"] = str(best_model_path) if best_model_path.exists() else None
             save_json(row, path)
-            tmp = Path(str(row.get("model_path_tmp", "")))
+            tmp = _resolve_saved_model_path(row.get("model_path_tmp"), path.parent.parent, results_dir)
             if cleanup_allowed and not keep_all_models and tmp.exists():
                 tmp.unlink()
     return selected_metadata
+
+
+def _resolve_saved_model_path(value: Any, source_results_dir: Path, target_results_dir: Path) -> Path:
+    if value in {None, ""}:
+        return Path("__missing_model_path__")
+    raw = Path(str(value))
+    if raw.exists():
+        return raw
+
+    candidates: list[Path] = []
+    parts = raw.parts
+    if "results" in parts:
+        rel_after_results = Path(*parts[parts.index("results") + 1 :])
+        candidates.extend([source_results_dir / rel_after_results, target_results_dir / rel_after_results])
+    if not raw.is_absolute():
+        candidates.extend([source_results_dir / raw, target_results_dir / raw])
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return raw
 
 
 def _is_number(value: Any) -> bool:

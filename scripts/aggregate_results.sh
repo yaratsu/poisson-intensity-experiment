@@ -2,7 +2,10 @@
 set -euo pipefail
 
 # Rebuild results/summary_metrics.csv, results/summary_table.md,
-# results/summary_table.tex, and optional theoretical-rate box plots.
+# results/summary_table.tex, theoretical-rate box plots, and aggregate
+# intensity comparison plots across all best-repeat methods.
+# Aggregation recursively scans metrics/ directories under RESULTS_DIR, so
+# imported artifacts such as results/results/metrics are included too.
 
 if [[ -n "${PYTHON_BIN:-}" ]]; then
   read -r -a PYTHON_CMD <<< "$PYTHON_BIN"
@@ -26,6 +29,9 @@ if [[ "$SELECT_BEST_MODELS" == "1" ]]; then
 fi
 if [[ "${KEEP_ALL_MODELS:-0}" == "1" ]]; then
   ARGS+=(--keep-all-models)
+fi
+if [[ "${INTENSITY_COMPARISONS:-1}" == "0" ]]; then
+  ARGS+=(--no-intensity-comparisons)
 fi
 
 "${PYTHON_CMD[@]}" -m src.aggregate "${ARGS[@]}"

@@ -1,0 +1,141 @@
+experiment:
+  scenario: compositional
+  support: euclidean1d
+  z_dim: 0
+  n: 100
+  repetition: 0
+  method: dnn_npmle
+  expected_count: 30
+  epsilon: 1.0e-4
+  beta: 2.0
+  eval_z: 64
+  eval_points: 512
+  eval_chunk_size: 4096
+  cache_dir: cache
+  mesh_resolution: 64
+  save_model_policy: best_repeat
+  keep_all_models: false
+  covariate_sampler: uniform
+  results_dir: results
+
+dnn:
+  # theory: choose depth/width relative to architecture_reference_n.
+  # Defaults give depth=3 and width=64 at n=1000, then scale as log(n)
+  # and (n/reference_n)^((1-gamma)/2), without min/max clipping.
+  # fixed: use hidden_layers exactly as listed below.
+  architecture: theory
+  hidden_layers: [128, 128, 128]
+  architecture_reference_n: 1000
+  depth_scale: 3.0
+  width_scale: 64.0
+  width_multiple: 8
+  output_activation: softplus
+  # agnostic: embedded observed events + empirical support quadrature.
+  # oracle: true manifold quadrature; CLI defaults to intrinsic input unless overridden.
+  manifold_learning: agnostic
+  manifold_input: embedded
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 64
+  max_epochs: 150
+  patience: 15
+  validation_fraction: 0.2
+  integration_points: 128
+  # stochastic: resample integration points independently for each mini-batch.
+  # fixed: reuse one quadrature grid throughout training, kept for ablations.
+  quadrature_mode: stochastic
+  grad_clip: 5.0
+  eps: 1.0e-8
+  dtype: float32
+  device: auto
+
+kernel_euclidean:
+  mode: spatial_only
+  kernel: gaussian
+  a_n: 1.0e-6
+  boundary_correction: renormalize
+  boundary_correction_eps: 1.0e-8
+  kernel_chunk_size: 4096
+  max_dense_entries: 20000000
+  gaussian_cutoff: 4.0
+  use_gaussian_cutoff: true
+  bandwidth_selection: theory_guided_5fold_cv
+  bandwidth_cv_folds: 5
+  bandwidth_theory_mode: separate_spatial_covariate
+  bandwidth_scale_x: 1.0
+  bandwidth_scale_z: 1.0
+  bandwidth_min: 0.02
+  bandwidth_max: 1.25
+  bandwidth_coarse_multipliers: [0.5, 0.75, 1.0, 1.5, 2.0]
+  bandwidth_highdim_multipliers: [0.75, 1.0, 1.5, 2.0, 3.0]
+  bandwidth_fine_multipliers: [0.8, 1.0, 1.25]
+  bandwidth_search: coarse_to_fine
+  bandwidth_grid_size: 5
+  bandwidth_fine_grid_size: 3
+  use_distance_cache: true
+  cache_dir: cache
+  validation_fraction: 0.2
+  validation_integration_points: 128
+  validation_quadrature_method: uniform
+  kernel_cv_max_replicates: 512
+  kernel_cv_max_events_per_replicate: 128
+  validation_z_chunk_size: 256
+
+kernel_covariate:
+  mode: joint_kernel
+  kernel: gaussian
+  a_n: 1.0e-6
+  boundary_correction: renormalize
+  boundary_correction_eps: 1.0e-8
+  kernel_chunk_size: 4096
+  max_dense_entries: 20000000
+  gaussian_cutoff: 4.0
+  use_gaussian_cutoff: true
+  bandwidth_selection: theory_guided_5fold_cv
+  bandwidth_cv_folds: 5
+  bandwidth_theory_mode: separate_spatial_covariate
+  bandwidth_scale_x: 1.0
+  bandwidth_scale_z: 1.0
+  bandwidth_min: 0.02
+  bandwidth_max: 1.25
+  bandwidth_coarse_multipliers: [0.5, 0.75, 1.0, 1.5, 2.0]
+  bandwidth_highdim_multipliers: [0.75, 1.0, 1.5, 2.0, 3.0]
+  bandwidth_fine_multipliers: [0.8, 1.0, 1.25]
+  bandwidth_search: coarse_to_fine
+  bandwidth_grid_size: 5
+  bandwidth_fine_grid_size: 3
+  use_distance_cache: true
+  cache_dir: cache
+  validation_fraction: 0.2
+  validation_integration_points: 128
+  validation_quadrature_method: uniform
+  kernel_cv_max_replicates: 512
+  kernel_cv_max_events_per_replicate: 128
+  validation_z_chunk_size: 256
+
+kernel_manifold:
+  a_n: 1.0e-6
+  kernel_chunk_size: 4096
+  max_dense_entries: 20000000
+  gaussian_cutoff: 4.0
+  use_gaussian_cutoff: true
+  bandwidth_selection: ward_cv
+  bandwidth_cv_folds: 5
+  bandwidth_theory_mode: ward_geodesic_grid
+  bandwidth_min: 0.03
+  bandwidth_max: 1.25
+  bandwidth_coarse_multipliers: [0.5, 0.75, 1.0, 1.5, 2.0]
+  bandwidth_fine_multipliers: [0.8, 1.0, 1.25]
+  bandwidth_search: coarse_to_fine
+  bandwidth_grid_size: 5
+  bandwidth_fine_grid_size: 3
+  use_distance_cache: true
+  cache_dir: cache
+  mesh_resolution: 64
+  correction_type: none
+  validation_fraction: 0.2
+  validation_integration_points: 128
+  validation_quadrature_method: uniform
+  kernel_cv_max_replicates: 512
+  kernel_cv_max_events_per_replicate: 128
+  validation_z_chunk_size: 256

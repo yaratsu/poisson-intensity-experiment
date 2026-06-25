@@ -15,6 +15,7 @@ import numpy as np
 N_VALUES = [100, 316, 1000, 3162, 10000]
 Z_DIMS = [0, 1, 5, 10]
 CSV_EXCLUDE_KEYS = {"config", "kernel_profile"}
+METRIC_DEDUP_KEYS = ["scenario", "support", "z_dim", "n", "repetition", "method", "seed"]
 
 
 def ensure_dir(path: str | Path) -> Path:
@@ -105,21 +106,45 @@ def update_dicts_csv_dedup(path: str | Path, row: Mapping[str, Any], key_fields:
     write_dicts_csv(kept, path)
 
 
+def iter_metric_json_paths(results_dir: str | Path, glob_pattern: str = "*.json"):
+    results_dir = Path(results_dir)
+    metrics_dirs = []
+    top_metrics_dir = results_dir / "metrics"
+    if top_metrics_dir.exists():
+        metrics_dirs.append(top_metrics_dir)
+    if results_dir.exists():
+        metrics_dirs.extend(
+            path
+            for path in results_dir.rglob("metrics")
+            if path.is_dir() and path != top_metrics_dir
+        )
+    seen_dirs: set[Path] = set()
+    for metrics_dir in sorted(metrics_dirs, key=lambda path: (len(path.parts), str(path))):
+        resolved = metrics_dir.resolve()
+        if resolved in seen_dirs:
+            continue
+        seen_dirs.add(resolved)
+        for path in sorted(metrics_dir.glob(glob_pattern)):
+            if path.name.startswith("history_"):
+                continue
+            yield path
+
+
 def collect_metric_json_csv(results_dir: str | Path) -> None:
     results_dir = Path(results_dir)
-    metrics_dir = results_dir / "metrics"
-    rows: list[dict[str, Any]] = []
-    if not metrics_dir.exists():
-        return
-    for path in metrics_dir.glob("*.json"):
-        if path.name.startswith("history_"):
-            continue
+    metrics_dir = ensure_dir(results_dir / "metrics")
+    deduped_rows: dict[tuple[str, ...], dict[str, Any]] = {}
+    for path in iter_metric_json_paths(results_dir):
         try:
             row = load_json(path)
         except Exception:
             continue
         if "squared_hellinger" in row:
-            rows.append(row)
+            row = dict(row)
+            row["metric_source_path"] = str(path)
+            key = tuple(str(csv_cell(row.get(field))) for field in METRIC_DEDUP_KEYS)
+            deduped_rows.setdefault(key, row)
+    rows = list(deduped_rows.values())
     if rows:
         write_dicts_csv(rows, metrics_dir / "all_metrics.csv")
 

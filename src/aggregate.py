@@ -3,13 +3,18 @@ from __future__ import annotations
 import argparse
 
 from .model_selection import select_best_models
-from .plots import collect_metric_json, create_boxplots, create_summary_tables
+from .plots import collect_metric_json, create_boxplots, create_intensity_comparison_plots, create_summary_tables
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Aggregate Poisson intensity experiment results.")
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--boxplots", action="store_true", help="Also regenerate theoretical-rate box plots.")
+    parser.add_argument(
+        "--no-intensity-comparisons",
+        action="store_true",
+        help="Skip aggregate intensity plots that compare all best-repeat methods in one figure.",
+    )
     parser.add_argument("--select-best-models", action="store_true", help="Select and save only the best repetition model for each setting.")
     parser.add_argument("--keep-all-models", action="store_true", help="Keep non-best temporary model files when selecting best models.")
     args = parser.parse_args(argv)
@@ -19,6 +24,8 @@ def main(argv: list[str] | None = None) -> None:
     create_summary_tables(args.results_dir)
     if args.boxplots:
         create_boxplots(args.results_dir)
+    if not args.no_intensity_comparisons:
+        create_intensity_comparison_plots(args.results_dir)
 
 
 if __name__ == "__main__":
