@@ -1,0 +1,7 @@
+experiment:
+  scenario: near_zero
+  support: euclidean2d
+  expected_count: 30
+  epsilon: 1.0e-4
+  alpha: 1.0
+  beta: 2.0

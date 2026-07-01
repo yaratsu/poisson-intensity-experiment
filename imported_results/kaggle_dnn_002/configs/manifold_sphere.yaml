@@ -1,0 +1,11 @@
+experiment:
+  scenario: manifold
+  support: sphere
+  expected_count: 30
+  epsilon: 1.0e-4
+  alpha: 0.0
+  beta: 2.0
+
+dnn:
+  manifold_learning: agnostic
+  manifold_input: embedded

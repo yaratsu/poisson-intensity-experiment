@@ -1,0 +1,5 @@
+experiment:
+  scenario: compositional
+  support: euclidean2d
+  expected_count: 30
+  beta: 2.0
